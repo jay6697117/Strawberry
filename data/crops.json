@@ -1,0 +1,20 @@
+{
+  "parsnip": {
+    "name": "Parsnip",
+    "seasons": ["spring"],
+    "growth_days": 4,
+    "stages": 5,
+    "sell_price": 35,
+    "seed_price": 20,
+    "seed_id": "parsnip_seed"
+  },
+  "potato": {
+    "name": "Potato",
+    "seasons": ["spring"],
+    "growth_days": 6,
+    "stages": 5,
+    "sell_price": 80,
+    "seed_price": 50,
+    "seed_id": "potato_seed"
+  }
+}
