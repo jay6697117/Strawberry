@@ -1,443 +1,696 @@
-# Strawberry - 星露谷物语克隆游戏设计文档
+# Strawberry Godot 4.3+ Farming RPG Implementation Plan
 
-## 项目概述
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**项目名称**：Strawberry（草莓）
-**类型**：2D 像素风农场模拟 RPG
-**引擎**：Godot 4.3+（GDScript）
-**美术资源**：[Sprout Lands Asset Pack](https://cupnooble.itch.io/sprout-lands-asset-pack)（主素材），[Pixel Plains](https://snowhex.itch.io/pixel-plains)（补充素材）
-**分辨率**：基础 320×180（16:9），放大至窗口分辨率
-**瓦片尺寸**：16×16 像素
+**Goal:** 在 Godot 4.3+ 中实现一个可玩的星露谷核心循环 MVP：移动 -> 耕地 -> 种植 -> 浇水 -> 日终成长 -> 收获 -> 出货 -> 睡觉存档 -> 读档恢复。
 
----
+**Architecture:** 采用“场景内聚 + 最小全局边界”架构：仅保留 `SessionState` 与 `SaveSystem` 两个 Autoload；系统之间优先使用信号通信；农场逻辑状态和 TileMap 显示状态分离，避免存档与瓦片资源强耦合。遵循 DRY、YAGNI、TDD、小步快提交流程。
 
-## 一、项目结构
-
-```
-Strawberry/
-├── project.godot                # Godot 项目配置
-├── assets/                      # 所有美术/音频资源
-│   ├── sprites/                 # 角色、作物、物品精灵图
-│   ├── tilesets/                # 地图瓦片素材
-│   └── ui/                      # UI 界面素材
-├── scenes/                      # 所有场景文件（.tscn）
-│   ├── main/                    # 主场景、游戏入口
-│   ├── player/                  # 玩家角色场景
-│   ├── farm/                    # 农场地图场景
-│   ├── town/                    # 小镇地图场景
-│   ├── npcs/                    # NPC 场景
-│   ├── ui/                      # UI 场景（背包、对话框、商店）
-│   └── items/                   # 物品/作物场景
-├── scripts/                     # GDScript 脚本
-│   ├── autoload/                # 全局单例（GameTime, Inventory, GameData, EventBus）
-│   ├── player/                  # 玩家相关脚本
-│   ├── farming/                 # 种植系统脚本
-│   ├── npc/                     # NPC 行为脚本
-│   ├── ui/                      # UI 控制脚本
-│   └── data/                    # 数据定义（作物、物品、对话）
-└── data/                        # JSON 数据文件
-    ├── crops.json               # 作物数据表
-    ├── items.json               # 物品数据表
-    ├── npcs.json                # NPC 数据表
-    └── dialogues/               # 对话文本文件
-```
+**Tech Stack:** Godot 4.3+、GDScript 2.0、TileMapLayer、JSON（带 schema_version）+ 迁移器、GUT 9.4.x、Git
 
 ---
 
-## 二、核心架构
+## 深度调研结论（先调研，再实施）
 
-### 全局单例（Autoload）
+1. 场景组织：官方建议用 `Main -> World + GUI` 的根结构，切图只替换 `World` 下内容，UI 保持常驻，降低切场景副作用。
+2. 解耦原则：场景尽量自给自足，必须依赖外部时由父节点注入（信号/Callable/引用），不要写死跨场景 NodePath。
+3. Autoload 使用：Autoload 适合“全局且隔离”的系统，不适合“万能总线”。全局 EventBus 容易失控、难定位问题。
+4. 逻辑时序：高频逻辑分清 `_process`、`_physics_process`、`_input`；需要可测和可复现的时间系统要用确定性 tick，而不是把业务绑死在 Timer 实时流逝上。
+5. TileMapLayer：Godot 4 推荐多 TileMapLayer 分层，但“可视层”和“逻辑层”要分离；存档不要直接存 atlas/source id。
+6. 存档：官方推荐 `Persist` 分组 + 节点自描述 `save()`；路径用 `user://`；复杂数据可转 binary，但 MVP 用 JSON 更易调试。
+7. 项目结构：文件和资源按功能归类，文件夹/文件名统一 `snake_case`，规避跨平台大小写问题。
+8. 性能策略：先 profile，再优化瓶颈；不要过早优化；大地图注意减少常驻处理节点。
+9. 测试：Godot 官方 `--test` 主要面向引擎层，项目级 GDScript 自动化建议使用 GUT（Godot 4.x 可用，支持 CLI 和 JUnit XML）。
 
-通过 Godot 的 Autoload 机制注册四个全局单例，管理跨场景的游戏状态：
-
-| 单例名 | 职责 |
-|--------|------|
-| `GameTime` | 时间流逝、日期、季节管理 |
-| `Inventory` | 背包物品管理 |
-| `GameData` | 游戏进度（金钱、好感度、农场状态、存档） |
-| `EventBus` | 全局事件总线，系统间通信 |
-
-### 系统间通信
-
-使用 Godot 的 **信号（Signal）** 机制实现系统解耦：
-- `GameTime` 发出 `day_started`、`season_changed` 信号
-- 种植系统监听 `day_started` 来推进作物生长
-- NPC 系统监听 `time_tick` 来更新位置
-- UI 监听各种信号来更新显示
-
----
-
-## 三、玩家系统
-
-### 节点结构
-```
-Player (CharacterBody2D)
-├── CollisionShape2D          # 碰撞体
-├── AnimatedSprite2D          # 角色动画
-├── ToolHitArea (Area2D)      # 工具作用范围
-│   └── CollisionShape2D
-├── InteractionArea (Area2D)  # 交互检测范围
-│   └── CollisionShape2D
-└── Camera2D                  # 跟随摄像机
-```
-
-### 玩家能力
-- **移动**：8 方向移动（上下左右 + 4 对角线）
-- **工具使用**：锄头（翻地）、水壶（浇水）、镰刀（收割）
-- **物品使用**：种子（种植）、其他消耗品
-- **交互**：与 NPC 对话、开箱子、进商店
-- **快捷栏**：数字键 1-9 切换当前手持物品
-
-### 工具作用机制
-玩家面朝的方向前方 1 格（16px）为工具作用目标。按动作键时：
-1. 检测 `ToolHitArea` 内的 TileMap 格子
-2. 根据当前工具类型执行对应操作
-3. 播放工具使用动画
+**主要参考（可直接打开）：**
+- `https://docs.godotengine.org/en/stable/tutorials/best_practices/index.html`
+- `https://docs.godotengine.org/en/stable/tutorials/best_practices/scene_organization.html`
+- `https://docs.godotengine.org/en/stable/tutorials/best_practices/autoloads_versus_internal_nodes.html`
+- `https://docs.godotengine.org/en/stable/tutorials/best_practices/logic_preferences.html`
+- `https://docs.godotengine.org/en/stable/tutorials/io/saving_games.html`
+- `https://docs.godotengine.org/en/stable/tutorials/2d/using_tilemaps.html`
+- `https://docs.godotengine.org/en/stable/tutorials/performance/index.html`
+- `https://github.com/godotengine/godot-demo-projects/tree/master/loading/serialization`
+- `https://github.com/godotengine/godot-demo-projects/tree/master/2d/finite_state_machine`
+- `https://gut.readthedocs.io/en/latest/Quick-Start.html`
+- `https://gut.readthedocs.io/en/latest/Command-Line.html`
 
 ---
 
-## 四、农场种植系统
+## 执行前置约束（必须）
 
-### TileMap 分层
+- 在独立 worktree 执行（`@using-git-worktrees`）。
+- 执行全流程时使用：`@test-driven-development`、`@systematic-debugging`、`@verification-before-completion`。
+- 实施本计划时使用：`@executing-plans`。
+- 每个 Task 完成后立刻提交（小提交，单一意图）。
+- 不允许新增“全局万能管理器”；MVP 只保留 2 个 Autoload：`SessionState`、`SaveSystem`。
 
-使用 3 个 `TileMapLayer` 节点：
+**一次性初始化命令（在开始 Task 1 前）：**
 
-| 层级 | 名称 | 用途 |
-|------|------|------|
-| 0 | Ground | 草地、泥土、路径等基础地形 |
-| 1 | Farmland | 耕地状态（干燥/湿润） |
-| 2 | Crops | 作物各生长阶段 |
-
-### 种植流程
-
-```
-锄头 → 草地变耕地 → 种子 → 种下作物 → 水壶 → 浇水
-                                              ↓
-每日结算：浇水的作物生长+1阶段，未浇水不生长，耕地重置为干燥
-                                              ↓
-                                  作物成熟 → 镰刀收割 → 物品进背包
+```bash
+godot --version
 ```
 
-### 作物数据
+Expected: 输出 `4.3` 或更高版本。
 
-```json
-{
-  "parsnip": {
-    "name": "防风草",
-    "seasons": ["spring"],
-    "growth_days": 4,
-    "stages": 5,
-    "sell_price": 35,
-    "seed_price": 20,
-    "seed_id": "parsnip_seed"
-  },
-  "potato": {
-    "name": "土豆",
-    "seasons": ["spring"],
-    "growth_days": 6,
-    "stages": 5,
-    "sell_price": 80,
-    "seed_price": 50,
-    "seed_id": "potato_seed"
-  },
-  "tomato": {
-    "name": "番茄",
-    "seasons": ["summer"],
-    "growth_days": 11,
-    "stages": 6,
-    "sell_price": 60,
-    "seed_price": 50,
-    "seed_id": "tomato_seed"
-  },
-  "pumpkin": {
-    "name": "南瓜",
-    "seasons": ["autumn"],
-    "growth_days": 13,
-    "stages": 6,
-    "sell_price": 320,
-    "seed_price": 100,
-    "seed_id": "pumpkin_seed"
-  }
-}
+```bash
+mkdir -p test/unit test/integration test/fixtures data/dialogues
 ```
 
-### 耕地状态机
+Expected: 目录创建成功。
 
+```bash
+godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gh
 ```
-草地 --[锄头]--> 干燥耕地 --[种子]--> 已种植(干燥) --[水壶]--> 已种植(湿润)
-                                                                    ↓
-                                                            [日终结算]
-                                                                    ↓
-                                                        已种植(干燥) + 生长+1
-```
+
+Expected: 输出包含 `The GUT CLI`。
 
 ---
 
-## 五、时间与季节系统
+### Task 1: 项目骨架 + 最小全局边界
 
-### 时间规则
-- 游戏内 1 天 ≈ 现实 12-15 分钟（可在设置中调节）
-- 每 N 秒 = 游戏内 10 分钟（用 Timer 节点控制）
-- 每天从 6:00 开始，2:00AM（26:00）强制结束
-- 日程：早晨(6:00) → 白天 → 傍晚(18:00) → 夜晚(22:00)
+**Files:**
+- Create: `project.godot`
+- Create: `.gutconfig.json`
+- Create: `scenes/main/main.tscn`
+- Create: `scripts/autoload/session_state.gd`
+- Create: `scripts/autoload/save_system.gd`
+- Test: `test/unit/test_project_contract.gd`
 
-### 日历
-- 每季 28 天
-- 四季循环：春(Spring) → 夏(Summer) → 秋(Autumn) → 冬(Winter)
-- 年份从第 1 年开始递增
-
-### 季节影响
-| 季节 | 可种作物 | 地图颜色 | 特殊事件 |
-|------|----------|----------|----------|
-| 春 | 防风草、土豆、花椰菜 | 绿色草地、樱花 | 开局季节 |
-| 夏 | 番茄、蓝莓、甜瓜 | 深绿色、明亮 | — |
-| 秋 | 南瓜、茄子、蔓越莓 | 橙色、落叶 | — |
-| 冬 | 无（不能种地） | 白雪覆盖 | 可钓鱼/采矿 |
-
-### 日终处理流程
-
-当玩家上床睡觉后，依次执行：
-1. 日期 +1
-2. 检查是否换季（第 28 天 → 下一季第 1 天）
-3. 遍历所有耕地：
-   - 浇过水的作物 → 生长阶段 +1
-   - 没浇水的作物 → 不生长（不会死）
-   - 所有耕地重置为"未浇水"状态
-4. 如果换季 → 清除不属于新季节的作物
-5. 更新 NPC 好感度衰减（每天 -1）
-6. 自动保存游戏
-
-### GameTime 接口
+**Step 1: Write the failing test**
 
 ```gdscript
-# 属性
-var current_season: String   # "spring" / "summer" / "autumn" / "winter"
-var current_day: int         # 1-28
-var current_year: int        # 从 1 开始
-var current_hour: int        # 6-26
-var is_night: bool           # 18:00 后为 true
+extends GutTest
 
-# 信号
-signal day_started           # 新的一天开始时触发
-signal season_changed(new_season: String)  # 换季时触发
-signal time_tick(hour: int)  # 每游戏内 10 分钟触发
+func test_main_scene_and_autoload_contract() -> void:
+    assert_eq(ProjectSettings.get_setting("application/run/main_scene", ""), "res://scenes/main/main.tscn")
+    assert_not_null(get_tree().root.get_node_or_null("SessionState"))
+    assert_not_null(get_tree().root.get_node_or_null("SaveSystem"))
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_project_contract.gd -gexit`
+Expected: FAIL，提示主场景或 Autoload 节点不存在。
+
+**Step 3: Write minimal implementation**
+
+```gdscript
+# scripts/autoload/session_state.gd
+extends Node
+class_name SessionState
+
+signal gold_changed(new_gold: int)
+
+var day: int = 1
+var season: StringName = &"spring"
+var gold: int = 500:
+    set(value):
+        gold = max(value, 0)
+        gold_changed.emit(gold)
+```
+
+```gdscript
+# scripts/autoload/save_system.gd
+extends Node
+class_name SaveSystem
+
+func save_game() -> Error:
+    return OK
+
+func load_game() -> Error:
+    return OK
+```
+
+```ini
+# project.godot (excerpt)
+[application]
+config/name="Strawberry"
+run/main_scene="res://scenes/main/main.tscn"
+
+[autoload]
+SessionState="*res://scripts/autoload/session_state.gd"
+SaveSystem="*res://scripts/autoload/save_system.gd"
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_project_contract.gd -gexit`
+Expected: PASS。
+
+**Step 5: Commit**
+
+```bash
+git add project.godot .gutconfig.json scenes/main/main.tscn scripts/autoload/session_state.gd scripts/autoload/save_system.gd test/unit/test_project_contract.gd
+git commit -m "chore: bootstrap godot project contract and minimal autoloads"
+```
+
+### Task 2: Main 根场景装配（World/UI 解耦）
+
+**Files:**
+- Create: `scripts/main/main_root.gd`
+- Create: `scenes/world/world_root.tscn`
+- Create: `scenes/ui/ui_root.tscn`
+- Modify: `scenes/main/main.tscn`
+- Test: `test/integration/test_main_bootstrap.gd`
+
+**Step 1: Write the failing test**
+
+```gdscript
+extends GutTest
+
+func test_main_instantiates_world_and_ui() -> void:
+    var packed := load("res://scenes/main/main.tscn") as PackedScene
+    var main := add_child_autofree(packed.instantiate())
+    assert_not_null(main.get_node_or_null("WorldRoot"))
+    assert_not_null(main.get_node_or_null("UIRoot"))
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/integration/test_main_bootstrap.gd -gexit`
+Expected: FAIL，提示 `WorldRoot` 或 `UIRoot` 缺失。
+
+**Step 3: Write minimal implementation**
+
+```gdscript
+# scripts/main/main_root.gd
+extends Node
+
+@onready var world_root: Node = $WorldRoot
+@onready var ui_root: Control = $UIRoot
+
+func _ready() -> void:
+    assert(world_root != null)
+    assert(ui_root != null)
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/integration/test_main_bootstrap.gd -gexit`
+Expected: PASS。
+
+**Step 5: Commit**
+
+```bash
+git add scenes/main/main.tscn scenes/world/world_root.tscn scenes/ui/ui_root.tscn scripts/main/main_root.gd test/integration/test_main_bootstrap.gd
+git commit -m "feat: assemble main root with separated world and ui branches"
+```
+
+### Task 3: 确定性时间系统（GameClock + DayTransaction）
+
+**Files:**
+- Create: `scripts/core/game_clock.gd`
+- Create: `scripts/core/day_transaction_service.gd`
+- Modify: `scripts/autoload/session_state.gd`
+- Test: `test/unit/test_game_clock.gd`
+- Test: `test/unit/test_day_transaction_order.gd`
+
+**Step 1: Write the failing test**
+
+```gdscript
+extends GutTest
+
+func test_clock_advances_in_10_minute_ticks() -> void:
+    var clock := GameClock.new()
+    clock.hour = 6
+    clock.minute = 50
+    clock.advance_tick()
+    assert_eq(clock.hour, 7)
+    assert_eq(clock.minute, 0)
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_game_clock.gd -gexit`
+Expected: FAIL，提示 `GameClock` 或 `advance_tick` 不存在。
+
+**Step 3: Write minimal implementation**
+
+```gdscript
+# scripts/core/game_clock.gd
+extends RefCounted
+class_name GameClock
+
+signal time_tick(hour: int, minute: int)
+
+const MINUTES_PER_TICK := 10
+var day: int = 1
+var hour: int = 6
+var minute: int = 0
+
+func advance_tick() -> void:
+    minute += MINUTES_PER_TICK
+    while minute >= 60:
+        minute -= 60
+        hour += 1
+    time_tick.emit(hour, minute)
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_game_clock.gd -gexit`
+Expected: PASS。
+
+**Step 5: Commit**
+
+```bash
+git add scripts/core/game_clock.gd scripts/core/day_transaction_service.gd scripts/autoload/session_state.gd test/unit/test_game_clock.gd test/unit/test_day_transaction_order.gd
+git commit -m "feat: add deterministic game clock and day transaction contract"
+```
+
+### Task 4: 玩家移动与工具目标格计算
+
+**Files:**
+- Create: `scenes/player/player.tscn`
+- Create: `scripts/player/player_controller.gd`
+- Create: `scripts/player/tool_targeting.gd`
+- Test: `test/unit/test_tool_targeting.gd`
+
+**Step 1: Write the failing test**
+
+```gdscript
+extends GutTest
+
+func test_front_cell_uses_facing_direction() -> void:
+    var target := ToolTargeting.compute_front_cell(Vector2(32, 32), Vector2i(1, 0), 16)
+    assert_eq(target, Vector2i(3, 2))
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_tool_targeting.gd -gexit`
+Expected: FAIL，提示 `ToolTargeting` 未定义。
+
+**Step 3: Write minimal implementation**
+
+```gdscript
+# scripts/player/tool_targeting.gd
+extends RefCounted
+class_name ToolTargeting
+
+static func compute_front_cell(global_pos: Vector2, facing: Vector2i, tile_size: int) -> Vector2i:
+    var world_target := global_pos + Vector2(facing) * float(tile_size)
+    return Vector2i(floor(world_target.x / tile_size), floor(world_target.y / tile_size))
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_tool_targeting.gd -gexit`
+Expected: PASS。
+
+**Step 5: Commit**
+
+```bash
+git add scenes/player/player.tscn scripts/player/player_controller.gd scripts/player/tool_targeting.gd test/unit/test_tool_targeting.gd
+git commit -m "feat: implement player movement baseline and tool target calculation"
+```
+
+### Task 5: 农地逻辑状态机（逻辑层）与 TileMap 映射（显示层）
+
+**Files:**
+- Create: `scenes/farm/farm_world.tscn`
+- Create: `scripts/farm/farm_grid_state.gd`
+- Create: `scripts/farm/farm_tilemap_view.gd`
+- Test: `test/unit/test_farm_grid_state_machine.gd`
+- Modify: `scenes/world/world_root.tscn`
+
+**Step 1: Write the failing test**
+
+```gdscript
+extends GutTest
+
+func test_till_then_water_changes_state() -> void:
+    var grid := FarmGridState.new()
+    var cell := Vector2i(10, 4)
+    grid.till(cell)
+    assert_eq(grid.get_plot(cell).soil_state, "dry")
+    grid.water(cell)
+    assert_eq(grid.get_plot(cell).soil_state, "wet")
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_farm_grid_state_machine.gd -gexit`
+Expected: FAIL。
+
+**Step 3: Write minimal implementation**
+
+```gdscript
+# scripts/farm/farm_grid_state.gd
+extends RefCounted
+class_name FarmGridState
+
+var _plots: Dictionary = {}
+
+func till(cell: Vector2i) -> void:
+    _plots[cell] = {"soil_state": "dry", "crop_id": "", "stage": 0, "watered": false}
+
+func water(cell: Vector2i) -> void:
+    if not _plots.has(cell):
+        return
+    _plots[cell]["soil_state"] = "wet"
+    _plots[cell]["watered"] = true
+
+func get_plot(cell: Vector2i) -> Dictionary:
+    return _plots.get(cell, {})
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_farm_grid_state_machine.gd -gexit`
+Expected: PASS。
+
+**Step 5: Commit**
+
+```bash
+git add scenes/farm/farm_world.tscn scenes/world/world_root.tscn scripts/farm/farm_grid_state.gd scripts/farm/farm_tilemap_view.gd test/unit/test_farm_grid_state_machine.gd
+git commit -m "feat: split farm logical state machine from tilemap rendering"
+```
+
+### Task 6: 作物成长与日终结算顺序
+
+**Files:**
+- Create: `data/crops.json`
+- Create: `scripts/farm/crop_catalog.gd`
+- Create: `scripts/farm/crop_growth_service.gd`
+- Modify: `scripts/core/day_transaction_service.gd`
+- Test: `test/unit/test_crop_growth_service.gd`
+
+**Step 1: Write the failing test**
+
+```gdscript
+extends GutTest
+
+func test_watered_crop_advances_one_stage_per_day() -> void:
+    var service := CropGrowthService.new()
+    var plot := {"crop_id": "parsnip", "stage": 1, "watered": true, "soil_state": "wet"}
+    service.advance_plot_one_day(plot, "spring")
+    assert_eq(plot["stage"], 2)
+    assert_eq(plot["watered"], false)
+    assert_eq(plot["soil_state"], "dry")
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_crop_growth_service.gd -gexit`
+Expected: FAIL。
+
+**Step 3: Write minimal implementation**
+
+```gdscript
+# scripts/farm/crop_growth_service.gd
+extends RefCounted
+class_name CropGrowthService
+
+func advance_plot_one_day(plot: Dictionary, season: String) -> void:
+    if not plot.get("crop_id", "").is_empty() and plot.get("watered", false):
+        plot["stage"] = int(plot.get("stage", 0)) + 1
+    plot["watered"] = false
+    plot["soil_state"] = "dry"
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_crop_growth_service.gd -gexit`
+Expected: PASS。
+
+**Step 5: Commit**
+
+```bash
+git add data/crops.json scripts/farm/crop_catalog.gd scripts/farm/crop_growth_service.gd scripts/core/day_transaction_service.gd test/unit/test_crop_growth_service.gd
+git commit -m "feat: implement deterministic crop growth and day-end reset"
+```
+
+### Task 7: 背包与出货经济循环
+
+**Files:**
+- Create: `data/items.json`
+- Create: `scripts/inventory/inventory_slot.gd`
+- Create: `scripts/inventory/inventory_model.gd`
+- Create: `scripts/economy/shipping_bin_service.gd`
+- Modify: `scripts/autoload/session_state.gd`
+- Test: `test/unit/test_inventory_model.gd`
+- Test: `test/unit/test_shipping_bin_service.gd`
+
+**Step 1: Write the failing test**
+
+```gdscript
+extends GutTest
+
+func test_inventory_stacks_same_item() -> void:
+    var inv := InventoryModel.new(36)
+    inv.add_item("parsnip", 5)
+    inv.add_item("parsnip", 7)
+    assert_eq(inv.get_total("parsnip"), 12)
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_inventory_model.gd -gexit`
+Expected: FAIL。
+
+**Step 3: Write minimal implementation**
+
+```gdscript
+# scripts/inventory/inventory_model.gd
+extends RefCounted
+class_name InventoryModel
+
+var _slots: Array = []
+
+func _init(slot_count: int = 36) -> void:
+    _slots.resize(slot_count)
+    for i in _slots.size():
+        _slots[i] = {"item_id": "", "amount": 0}
+
+func add_item(item_id: String, amount: int) -> void:
+    for slot in _slots:
+        if slot["item_id"] == item_id:
+            slot["amount"] += amount
+            return
+    for slot in _slots:
+        if slot["item_id"].is_empty():
+            slot["item_id"] = item_id
+            slot["amount"] = amount
+            return
+
+func get_total(item_id: String) -> int:
+    var total := 0
+    for slot in _slots:
+        if slot["item_id"] == item_id:
+            total += int(slot["amount"])
+    return total
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_inventory_model.gd -gexit`
+Expected: PASS。
+
+**Step 5: Commit**
+
+```bash
+git add data/items.json scripts/inventory/inventory_slot.gd scripts/inventory/inventory_model.gd scripts/economy/shipping_bin_service.gd scripts/autoload/session_state.gd test/unit/test_inventory_model.gd test/unit/test_shipping_bin_service.gd
+git commit -m "feat: add inventory stacking and shipping bin settlement"
+```
+
+### Task 8: 存档 Schema 与迁移（兼容优先）
+
+**Files:**
+- Create: `scripts/save/save_codec.gd`
+- Create: `scripts/save/save_migrator.gd`
+- Modify: `scripts/autoload/save_system.gd`
+- Test: `test/unit/test_save_system.gd`
+- Test: `test/fixtures/save_v0.json`
+
+**Step 1: Write the failing test**
+
+```gdscript
+extends GutTest
+
+func test_save_migrates_to_current_schema() -> void:
+    var raw := {"schema_version": 0, "gold": 500}
+    var migrated := SaveMigrator.migrate(raw)
+    assert_eq(migrated["schema_version"], SaveMigrator.CURRENT_SCHEMA)
+    assert_true(migrated.has("season"))
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_save_system.gd -gexit`
+Expected: FAIL。
+
+**Step 3: Write minimal implementation**
+
+```gdscript
+# scripts/save/save_migrator.gd
+extends RefCounted
+class_name SaveMigrator
+
+const CURRENT_SCHEMA := 1
+
+static func migrate(data: Dictionary) -> Dictionary:
+    var out := data.duplicate(true)
+    var version := int(out.get("schema_version", 0))
+    while version < CURRENT_SCHEMA:
+        if version == 0:
+            out["season"] = String(out.get("season", "spring"))
+            out["day"] = int(out.get("day", 1))
+            out["schema_version"] = 1
+        version = int(out["schema_version"])
+    return out
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_save_system.gd -gexit`
+Expected: PASS。
+
+**Step 5: Commit**
+
+```bash
+git add scripts/save/save_codec.gd scripts/save/save_migrator.gd scripts/autoload/save_system.gd test/unit/test_save_system.gd test/fixtures/save_v0.json
+git commit -m "feat: add versioned save schema with forward migration"
+```
+
+### Task 9: NPC 日程与对话最小闭环
+
+**Files:**
+- Create: `data/npcs.json`
+- Create: `data/dialogues/merchant.json`
+- Create: `scenes/npc/npc.tscn`
+- Create: `scripts/npc/npc_schedule_service.gd`
+- Create: `scripts/npc/dialogue_service.gd`
+- Test: `test/unit/test_npc_schedule_service.gd`
+- Test: `test/unit/test_dialogue_service.gd`
+
+**Step 1: Write the failing test**
+
+```gdscript
+extends GutTest
+
+func test_schedule_returns_expected_slot() -> void:
+    var service := NpcScheduleService.new()
+    var slot := service.resolve_slot(12, [
+        {"time": 8, "location": "shop"},
+        {"time": 12, "location": "square"}
+    ])
+    assert_eq(slot["location"], "square")
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_npc_schedule_service.gd -gexit`
+Expected: FAIL。
+
+**Step 3: Write minimal implementation**
+
+```gdscript
+# scripts/npc/npc_schedule_service.gd
+extends RefCounted
+class_name NpcScheduleService
+
+func resolve_slot(hour: int, schedule: Array) -> Dictionary:
+    var chosen := {}
+    for slot in schedule:
+        if int(slot.get("time", 0)) <= hour:
+            chosen = slot
+    return chosen
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_npc_schedule_service.gd -gexit`
+Expected: PASS。
+
+**Step 5: Commit**
+
+```bash
+git add data/npcs.json data/dialogues/merchant.json scenes/npc/npc.tscn scripts/npc/npc_schedule_service.gd scripts/npc/dialogue_service.gd test/unit/test_npc_schedule_service.gd test/unit/test_dialogue_service.gd
+git commit -m "feat: implement npc schedule resolution and dialogue selector"
+```
+
+### Task 10: 商店 + HUD + 全链路回归
+
+**Files:**
+- Create: `scenes/ui/hud.tscn`
+- Create: `scenes/ui/shop_panel.tscn`
+- Create: `scripts/ui/hud_controller.gd`
+- Create: `scripts/economy/shop_service.gd`
+- Modify: `scripts/main/main_root.gd`
+- Test: `test/integration/test_full_day_loop.gd`
+
+**Step 1: Write the failing test**
+
+```gdscript
+extends GutTest
+
+func test_core_loop_from_seed_to_sell_updates_gold() -> void:
+    var loop := CoreLoopHarness.new()
+    loop.buy_seed("parsnip_seed", 1)
+    loop.till_and_plant(Vector2i(5, 5), "parsnip")
+    loop.water(Vector2i(5, 5))
+    loop.sleep_until_mature()
+    loop.harvest(Vector2i(5, 5))
+    var before := loop.gold()
+    loop.ship_item("parsnip", 1)
+    loop.sleep_once()
+    assert_gt(loop.gold(), before)
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/integration/test_full_day_loop.gd -gexit`
+Expected: FAIL。
+
+**Step 3: Write minimal implementation**
+
+```gdscript
+# scripts/economy/shop_service.gd
+extends RefCounted
+class_name ShopService
+
+func buy(session: SessionState, inventory: InventoryModel, item_id: String, price: int, amount: int) -> bool:
+    var total := price * amount
+    if session.gold < total:
+        return false
+    session.gold -= total
+    inventory.add_item(item_id, amount)
+    return true
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/integration/test_full_day_loop.gd -gexit`
+Expected: PASS。
+
+再跑一次全量：
+
+Run: `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gdir=res://test/unit -ginclude_subdirs -gdir=res://test/integration -ginclude_subdirs -gexit`
+Expected: PASS（0 failed）。
+
+**Step 5: Commit**
+
+```bash
+git add scenes/ui/hud.tscn scenes/ui/shop_panel.tscn scripts/ui/hud_controller.gd scripts/economy/shop_service.gd scripts/main/main_root.gd test/integration/test_full_day_loop.gd
+git commit -m "feat: complete shop, hud, and full day-loop regression coverage"
 ```
 
 ---
 
-## 六、NPC 与对话系统
+## Definition of Done（每个 Task 都要满足）
 
-### NPC 节点结构
-```
-NPC (CharacterBody2D)
-├── CollisionShape2D
-├── AnimatedSprite2D
-├── NavigationAgent2D         # 自动寻路
-├── InteractionArea (Area2D)  # 可交互范围
-│   └── CollisionShape2D
-└── DialogueBubble (Sprite2D) # 头顶对话气泡（靠近时显示）
-```
+- 指定测试先失败，再最小实现，再通过。
+- 只实现当前 Task 必要能力（YAGNI）。
+- 代码复用优先，不复制业务规则（DRY）。
+- 每个 Task 独立 commit，提交信息清晰描述意图。
+- 不允许用 `as any`、`@ts-ignore`（若后续引入 TS 工具链也同样适用）。
 
-### MVP NPC 列表
+## 最终验收命令
 
-| NPC | 角色 | 位置 | 功能 |
-|-----|------|------|------|
-| 皮埃尔 | 种子商人 | 商店 | 买卖种子和农具 |
-| 罗宾 | 木匠 | 木匠铺 | 升级房屋/建筑（后期） |
-| 老李 | 村长 | 村中心 | 教程引导、任务 |
-| 小花 | 邻居 | 隔壁农场 | 友好NPC、送礼对象 |
-| 神秘人 | ??? | 森林深处 | 解锁隐藏内容（后期） |
-
-### NPC 日程表
-
-每个 NPC 有按时间段定义的位置列表：
-
-```json
-{
-  "merchant": {
-    "name": "皮埃尔",
-    "schedules": {
-      "default": [
-        {"time": 8,  "location": "shop",        "position": [200, 150]},
-        {"time": 12, "location": "town_square",  "position": [400, 300]},
-        {"time": 17, "location": "shop",        "position": [200, 150]},
-        {"time": 22, "location": "home",        "position": [100, 100]}
-      ],
-      "rain": [
-        {"time": 8,  "location": "home",        "position": [100, 100]}
-      ]
-    }
-  }
-}
+```bash
+godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gdir=res://test/unit -ginclude_subdirs -gdir=res://test/integration -ginclude_subdirs -gexit
 ```
 
-NPC 在时间点到达时，使用 `NavigationAgent2D` 自动寻路到目标位置。
-
-### 好感度系统
-
-- 范围：0 - 1000
-- 等级划分：
-
-| 等级 | 好感度 | 解锁内容 |
-|------|--------|----------|
-| 陌生人 | 0-199 | 基础对话 |
-| 认识 | 200-399 | 更多对话选项 |
-| 朋友 | 400-599 | 特殊对话、小任务 |
-| 好友 | 600-799 | 赠送配方/物品 |
-| 挚友 | 800-1000 | 特殊剧情事件 |
-
-- 送礼规则：每个 NPC 有喜欢/讨厌的物品列表
-  - 最爱：+80 好感
-  - 喜欢：+45 好感
-  - 普通：+20 好感
-  - 不喜欢：-20 好感
-  - 讨厌：-40 好感
-- 每天自然衰减 -1（鼓励持续互动）
-
-### 对话系统
-
-对话数据结构（JSON）：
-```json
-{
-  "merchant_greeting": {
-    "conditions": {
-      "friendship_min": 0,
-      "friendship_max": 199,
-      "season": "spring"
-    },
-    "text": "你好啊新来的，需要买些种子吗？春天正是种防风草的好时候。",
-    "choices": [
-      {"text": "好的，我看看。", "action": "open_shop"},
-      {"text": "不用了，谢谢。", "next": "merchant_farewell"}
-    ]
-  },
-  "merchant_farewell": {
-    "text": "好吧，有需要随时来找我。",
-    "choices": []
-  }
-}
-```
-
-对话显示采用逐字打印效果（typewriter），按确认键可跳过直接显示全文。
-
----
-
-## 七、商店与经济系统
-
-### 背包系统
-
-- **容量**：36 格（6×6 网格）
-- **快捷栏**：底部 12 格（映射背包前 12 格）
-- **堆叠**：同类物品可堆叠，最多 999
-- **物品分类**：工具(tool)、种子(seed)、作物(crop)、矿石(ore)、杂项(misc)
-
-### 物品数据
-
-```json
-{
-  "parsnip_seed": {
-    "id": "parsnip_seed",
-    "name": "防风草种子",
-    "type": "seed",
-    "stackable": true,
-    "max_stack": 999,
-    "description": "春天种下，4天成熟",
-    "sell_price": 10,
-    "buy_price": 20,
-    "crop_id": "parsnip"
-  },
-  "parsnip": {
-    "id": "parsnip",
-    "name": "防风草",
-    "type": "crop",
-    "stackable": true,
-    "max_stack": 999,
-    "description": "常见的春季根茎蔬菜",
-    "sell_price": 35,
-    "buy_price": null
-  },
-  "hoe": {
-    "id": "hoe",
-    "name": "锄头",
-    "type": "tool",
-    "stackable": false,
-    "description": "用来翻地",
-    "sell_price": null,
-    "buy_price": null
-  }
-}
-```
-
-### 商店机制
-
-- 与商人 NPC 对话 → 选择"买东西"→ 打开商店 UI
-- 商店商品列表随季节变化（春天卖春季种子等）
-- 买东西扣金币，物品进背包
-- 卖东西从背包移除，加金币
-
-### 出货箱
-
-- 农场固定放置一个出货箱
-- 玩家把作物/物品放进出货箱
-- 日终睡觉时结算，弹出收入明细界面
-
-### 经济循环
-
-```
-买种子(花钱) → 种植 → 浇水 → 等待成熟 → 收割 → 卖出/出货箱(赚钱)
-      ↑                                                    ↓
-      └──────────────── 金币循环 ←──────────────────────────┘
-```
-
-**初始金币**：500G
-**春季种子价格参考**：防风草种 20G，土豆种 50G
-
----
-
-## 八、UI 界面
-
-| UI 组件 | 触发方式 | 功能 |
-|---------|----------|------|
-| HUD | 常驻显示 | 时间、日期、金币、体力条、当前工具/物品 |
-| 快捷栏 | 常驻底部 | 12 格物品快速切换 |
-| 背包界面 | 按 Tab/E 打开 | 查看/整理/丢弃物品 |
-| 对话框 | 与 NPC 交互 | 显示对话文字和选项 |
-| 商店界面 | NPC 触发 | 买卖物品列表、金币余额 |
-| 日终结算 | 睡觉后 | 显示当日出货收入明细 |
-| 暂停菜单 | 按 ESC | 继续、保存、设置、退出 |
-
----
-
-## 九、实现优先级
-
-### Phase 1：基础框架
-- Godot 项目初始化、目录结构搭建
-- 全局单例创建（GameTime, Inventory, GameData, EventBus）
-- 玩家角色移动（8方向 + 碰撞）
-- 基础农场地图（TileMap + 占位瓦片）
-- 摄像机跟随
-
-### Phase 2：种植核心循环
-- 工具系统（锄头翻地、水壶浇水、镰刀收割）
-- 作物种植与生长（数据驱动）
-- 日终结算逻辑
-- 时间/季节系统
-
-### Phase 3：背包与经济
-- 背包 UI + 快捷栏
-- 物品拾取/使用/丢弃
-- 出货箱机制
-- 金币系统
-
-### Phase 4：NPC 与社交
-- NPC 场景 + 日程寻路
-- 对话系统 UI
-- 好感度系统
-- 商店买卖
-
-### Phase 5：打磨
-- 替换正式美术素材
-- 音效/BGM
-- 存档/读档
-- 菜单界面
-- Bug 修复与平衡调整
+Expected: 全部通过，退出码为 0。
