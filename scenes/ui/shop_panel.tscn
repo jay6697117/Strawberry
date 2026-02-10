@@ -1,0 +1,15 @@
+[gd_scene format=3]
+
+[node name="ShopPanel" type="Control"]
+visible = false
+
+[node name="Title" type="Label" parent="."]
+offset_right = 240.0
+offset_bottom = 28.0
+text = "Shop"
+
+[node name="Hint" type="Label" parent="."]
+offset_top = 28.0
+offset_right = 280.0
+offset_bottom = 56.0
+text = "Buy/Sell Placeholder"

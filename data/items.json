@@ -1,0 +1,23 @@
+{
+  "parsnip_seed": {
+    "id": "parsnip_seed",
+    "name": "Parsnip Seed",
+    "type": "seed",
+    "stackable": true,
+    "max_stack": 999,
+    "description": "Plant in spring, matures in 4 days",
+    "sell_price": 10,
+    "buy_price": 20,
+    "crop_id": "parsnip"
+  },
+  "parsnip": {
+    "id": "parsnip",
+    "name": "Parsnip",
+    "type": "crop",
+    "stackable": true,
+    "max_stack": 999,
+    "description": "A common spring root vegetable",
+    "sell_price": 35,
+    "buy_price": null
+  }
+}

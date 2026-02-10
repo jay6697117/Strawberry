@@ -1,0 +1,13 @@
+{
+  "merchant": {
+    "name": "Pierre",
+    "schedules": {
+      "default": [
+        {"time": 8, "location": "shop", "position": [200, 150]},
+        {"time": 12, "location": "town_square", "position": [400, 300]},
+        {"time": 17, "location": "shop", "position": [200, 150]},
+        {"time": 22, "location": "home", "position": [100, 100]}
+      ]
+    }
+  }
+}

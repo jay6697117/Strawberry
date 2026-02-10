@@ -1,0 +1,18 @@
+{
+  "merchant_greeting": {
+    "conditions": {
+      "friendship_min": 0,
+      "friendship_max": 199,
+      "season": "spring"
+    },
+    "text": "你好啊新来的，需要买些种子吗？",
+    "choices": [
+      {"text": "好的，我看看。", "action": "open_shop"},
+      {"text": "不用了，谢谢。", "next": "merchant_farewell"}
+    ]
+  },
+  "merchant_farewell": {
+    "text": "好吧，有需要随时来找我。",
+    "choices": []
+  }
+}

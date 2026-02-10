@@ -1,0 +1,23 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/hud_controller.gd" id="1"]
+
+[node name="HUD" type="Control"]
+script = ExtResource("1")
+
+[node name="GoldLabel" type="Label" parent="."]
+offset_right = 160.0
+offset_bottom = 24.0
+text = "0G"
+
+[node name="DayLabel" type="Label" parent="."]
+offset_top = 24.0
+offset_right = 160.0
+offset_bottom = 48.0
+text = "Day 1"
+
+[node name="SeasonLabel" type="Label" parent="."]
+offset_top = 48.0
+offset_right = 160.0
+offset_bottom = 72.0
+text = "spring"
