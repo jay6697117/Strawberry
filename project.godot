@@ -1,0 +1,18 @@
+; Engine configuration file.
+; It's best edited using the editor and not directly.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Strawberry"
+run/main_scene="res://scenes/main/main.tscn"
+
+[autoload]
+
+SessionState="*res://scripts/autoload/session_state.gd"
+SaveSystem="*res://scripts/autoload/save_system.gd"
