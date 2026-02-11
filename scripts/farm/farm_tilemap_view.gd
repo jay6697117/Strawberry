@@ -2,6 +2,7 @@ extends Node2D
 
 const TILE_THEME_PATH := "res://data/visual/tileset_theme.json"
 const DEFAULT_TILE_SIZE := 32
+const REQUIRED_STAGE_COUNT := 5
 
 @onready var ground_layer: Node2D = $GroundLayer
 @onready var soil_layer: Node2D = $SoilLayer
@@ -12,7 +13,6 @@ var _grid_width: int = 32
 var _grid_height: int = 18
 var _plots: Dictionary = {}
 var _theme: Dictionary = {}
-var _palette: Dictionary = {}
 
 var _ground_texture: Texture2D
 var _dry_soil_texture: Texture2D
@@ -22,17 +22,15 @@ var _crop_stage_textures: Array[Texture2D] = []
 var _soil_sprites: Dictionary = {}
 var _crop_sprites: Dictionary = {}
 
-func _ready() -> void:
-    _load_theme()
-
 func configure(tile_size: int, grid_width: int, grid_height: int) -> void:
     _load_theme()
-    var configured_tile_size := int(_theme.get("tile_size", tile_size))
+
+    var configured_tile_size: int = int(_theme.get("tile_size", tile_size))
     _tile_size = maxi(configured_tile_size, 8)
     _grid_width = maxi(grid_width, 1)
     _grid_height = maxi(grid_height, 1)
 
-    _build_textures()
+    _load_external_textures()
     _rebuild_ground_layer()
     _rebuild_dynamic_layers()
 
@@ -53,81 +51,63 @@ func apply_all_plots(plots: Dictionary) -> void:
 
 func _load_theme() -> void:
     _theme = {}
-    _palette = {}
-    if FileAccess.file_exists(TILE_THEME_PATH):
-        var file := FileAccess.open(TILE_THEME_PATH, FileAccess.READ)
-        if file != null:
-            var parsed: Variant = JSON.parse_string(file.get_as_text())
-            if typeof(parsed) == TYPE_DICTIONARY:
-                _theme = Dictionary(parsed)
-                var palette_data: Variant = _theme.get("palette", {})
-                if typeof(palette_data) == TYPE_DICTIONARY:
-                    _palette = Dictionary(palette_data)
+    if not FileAccess.file_exists(TILE_THEME_PATH):
+        return
 
-func _build_textures() -> void:
-    var grass_base := _color("grass_base", Color(0.46, 0.72, 0.37))
-    var grass_shadow := _color("grass_shadow", Color(0.35, 0.57, 0.28))
-    var grass_light := _color("grass_light", Color(0.56, 0.81, 0.42))
-    var soil_dry_base := _color("soil_dry_base", Color(0.62, 0.43, 0.28))
-    var soil_dry_shadow := _color("soil_dry_shadow", Color(0.46, 0.31, 0.19))
-    var soil_wet_base := _color("soil_wet_base", Color(0.41, 0.29, 0.20))
-    var soil_wet_shadow := _color("soil_wet_shadow", Color(0.31, 0.22, 0.15))
+    var file := FileAccess.open(TILE_THEME_PATH, FileAccess.READ)
+    if file == null:
+        return
 
-    _ground_texture = _create_soil_tile(grass_base, grass_shadow, grass_light)
-    _dry_soil_texture = _create_soil_tile(soil_dry_base, soil_dry_shadow, soil_dry_base.lightened(0.1))
-    _wet_soil_texture = _create_soil_tile(soil_wet_base, soil_wet_shadow, soil_wet_base.lightened(0.08))
+    var parsed: Variant = JSON.parse_string(file.get_as_text())
+    if typeof(parsed) == TYPE_DICTIONARY:
+        _theme = Dictionary(parsed)
+
+func _load_external_textures() -> void:
+    var textures_variant: Variant = _theme.get("textures", {})
+    var textures: Dictionary = {}
+    if typeof(textures_variant) == TYPE_DICTIONARY:
+        textures = Dictionary(textures_variant)
+
+    _ground_texture = _load_png_texture(String(textures.get("ground", "")), Color(0.45, 0.72, 0.37))
+    _dry_soil_texture = _load_png_texture(String(textures.get("soil_dry", "")), Color(0.62, 0.43, 0.28))
+    _wet_soil_texture = _load_png_texture(String(textures.get("soil_wet", "")), Color(0.42, 0.31, 0.22))
 
     _crop_stage_textures.clear()
-    for stage in 5:
-        _crop_stage_textures.append(_create_crop_texture(stage))
+    var stage_paths := _extract_string_array(textures.get("crop_parsnip_stages", []))
+    for stage_path in stage_paths:
+        _crop_stage_textures.append(_load_png_texture(stage_path, Color(0.40, 0.73, 0.34, 0.9)))
 
-func _create_soil_tile(base: Color, shadow: Color, highlight: Color) -> Texture2D:
-    var image := Image.create(_tile_size, _tile_size, false, Image.FORMAT_RGBA8)
-    image.fill(base)
+    while _crop_stage_textures.size() < REQUIRED_STAGE_COUNT:
+        var fallback_color := Color(0.40, 0.73, 0.34, 0.9)
+        _crop_stage_textures.append(_build_fallback_texture(fallback_color))
 
-    for y in _tile_size:
-        for x in _tile_size:
-            if ((x * 5 + y * 3) % 17) == 0:
-                image.set_pixel(x, y, highlight)
-            elif ((x * 7 + y * 11) % 23) == 0:
-                image.set_pixel(x, y, shadow)
+func _extract_string_array(raw_value: Variant) -> Array[String]:
+    var out: Array[String] = []
+    if typeof(raw_value) != TYPE_ARRAY:
+        return out
 
-    var outline := _color("outline", Color(0.16, 0.21, 0.15))
-    for i in _tile_size:
-        image.set_pixel(i, 0, outline)
-        image.set_pixel(i, _tile_size - 1, outline)
-        image.set_pixel(0, i, outline)
-        image.set_pixel(_tile_size - 1, i, outline)
+    var as_array: Array = raw_value
+    for value in as_array:
+        var path := String(value)
+        if path.is_empty():
+            continue
+        out.append(path)
+    return out
 
+func _load_png_texture(resource_path: String, fallback_color: Color) -> Texture2D:
+    if resource_path.is_empty() or not FileAccess.file_exists(resource_path):
+        return _build_fallback_texture(fallback_color)
+
+    var image := Image.new()
+    var absolute_path := ProjectSettings.globalize_path(resource_path)
+    var err := image.load(absolute_path)
+    if err != OK:
+        return _build_fallback_texture(fallback_color)
     return ImageTexture.create_from_image(image)
 
-func _create_crop_texture(stage: int) -> Texture2D:
-    var transparent := Color(0.0, 0.0, 0.0, 0.0)
+func _build_fallback_texture(color: Color) -> Texture2D:
     var image := Image.create(_tile_size, _tile_size, false, Image.FORMAT_RGBA8)
-    image.fill(transparent)
-
-    var stem := _color("crop_stem", Color(0.30, 0.55, 0.25))
-    var leaf := _color("crop_leaf", Color(0.45, 0.78, 0.37))
-    var ripe := _color("crop_ripe", Color(0.95, 0.84, 0.42))
-
-    var center := int(_tile_size / 2.0)
-    var base_y := _tile_size - 8
-    var height := 4 + stage * 4
-    for i in height:
-        image.set_pixel(center, base_y - i, stem)
-
-    for offset in 2 + stage:
-        var y := base_y - (offset * 2)
-        if y < 2:
-            continue
-        image.set_pixel(center - 1, y, leaf)
-        image.set_pixel(center + 1, y, leaf)
-
-    if stage >= 4:
-        image.set_pixel(center - 2, base_y - height + 2, ripe)
-        image.set_pixel(center, base_y - height, ripe)
-        image.set_pixel(center + 2, base_y - height + 2, ripe)
-
+    image.fill(color)
     return ImageTexture.create_from_image(image)
 
 func _rebuild_ground_layer() -> void:
@@ -202,9 +182,3 @@ func _clear_layer_children(layer: Node2D) -> void:
 
 func _cell_center(cell: Vector2i) -> Vector2:
     return Vector2((float(cell.x) + 0.5) * _tile_size, (float(cell.y) + 0.5) * _tile_size)
-
-func _color(key: String, fallback: Color) -> Color:
-    var value: Variant = _palette.get(key, "")
-    if typeof(value) != TYPE_STRING:
-        return fallback
-    return Color.from_string(String(value), fallback)

@@ -1,16 +1,15 @@
 {
   "tile_size": 32,
-  "palette": {
-    "grass_base": "#75b95f",
-    "grass_shadow": "#5c964a",
-    "grass_light": "#8ad071",
-    "soil_dry_base": "#9c6a44",
-    "soil_dry_shadow": "#7c5234",
-    "soil_wet_base": "#6a4b33",
-    "soil_wet_shadow": "#4f3725",
-    "crop_stem": "#4b8c3f",
-    "crop_leaf": "#79c95e",
-    "crop_ripe": "#f4d86a",
-    "outline": "#263325"
+  "textures": {
+    "ground": "res://assets/tiles/ground_grass.png",
+    "soil_dry": "res://assets/tiles/soil_dry.png",
+    "soil_wet": "res://assets/tiles/soil_wet.png",
+    "crop_parsnip_stages": [
+      "res://assets/tiles/crop_parsnip_stage_0.png",
+      "res://assets/tiles/crop_parsnip_stage_1.png",
+      "res://assets/tiles/crop_parsnip_stage_2.png",
+      "res://assets/tiles/crop_parsnip_stage_3.png",
+      "res://assets/tiles/crop_parsnip_stage_4.png"
+    ]
   }
 }
