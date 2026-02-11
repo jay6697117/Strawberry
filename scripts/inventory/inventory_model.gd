@@ -41,3 +41,23 @@ func get_total(item_id: String) -> int:
         if slot["item_id"] == item_id:
             total += int(slot["amount"])
     return total
+
+func to_item_totals() -> Dictionary:
+    var totals: Dictionary = {}
+    for slot in _slots:
+        var item_id := String(slot.get("item_id", ""))
+        var amount := int(slot.get("amount", 0))
+        if item_id.is_empty() or amount <= 0:
+            continue
+        totals[item_id] = int(totals.get(item_id, 0)) + amount
+    return totals
+
+func replace_with_item_totals(totals: Dictionary) -> void:
+    for i in _slots.size():
+        _slots[i] = {"item_id": "", "amount": 0}
+
+    for item_id in totals.keys():
+        var amount := int(totals[item_id])
+        if amount <= 0:
+            continue
+        add_item(String(item_id), amount)

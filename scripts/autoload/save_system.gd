@@ -7,7 +7,9 @@ func build_default_save_data() -> Dictionary:
         "schema_version": preload("res://scripts/save/save_migrator.gd").CURRENT_SCHEMA,
         "gold": int(SessionState.gold),
         "season": String(SessionState.season),
-        "day": int(SessionState.day)
+        "day": int(SessionState.day),
+        "inventory": _serialize_inventory(SessionState.inventory),
+        "farm_plots": _sanitize_farm_plots(SessionState.farm_plots)
     }
 
 func normalize_save_data(data: Dictionary) -> Dictionary:
@@ -77,9 +79,47 @@ func apply_to_session(data: Dictionary) -> void:
     SessionState.day = int(data.get("day", SessionState.day))
     SessionState.season = StringName(data.get("season", SessionState.season))
 
+    var inventory_data: Variant = data.get("inventory", {})
+    if typeof(inventory_data) == TYPE_DICTIONARY:
+        if SessionState.inventory.has_method("replace_with_item_totals"):
+            SessionState.inventory.replace_with_item_totals(Dictionary(inventory_data))
+
+    SessionState.farm_plots = _sanitize_farm_plots(data.get("farm_plots", []))
+
 func load_and_apply_to_session() -> Error:
     var data := load_game_data()
     if data.is_empty():
         return ERR_FILE_NOT_FOUND
     apply_to_session(data)
     return OK
+
+func _serialize_inventory(inventory_model) -> Dictionary:
+    if inventory_model == null:
+        return {}
+    if inventory_model.has_method("to_item_totals"):
+        return Dictionary(inventory_model.to_item_totals()).duplicate(true)
+    return {}
+
+func _sanitize_farm_plots(raw_plots: Variant) -> Array:
+    if typeof(raw_plots) != TYPE_ARRAY:
+        return []
+
+    var sanitized: Array = []
+    for entry in raw_plots:
+        if typeof(entry) != TYPE_DICTIONARY:
+            continue
+
+        if not entry.has("x") or not entry.has("y"):
+            continue
+
+        var plot: Variant = entry.get("plot", {})
+        if typeof(plot) != TYPE_DICTIONARY:
+            continue
+
+        sanitized.append({
+            "x": int(entry.get("x", 0)),
+            "y": int(entry.get("y", 0)),
+            "plot": Dictionary(plot).duplicate(true)
+        })
+
+    return sanitized

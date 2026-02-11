@@ -44,5 +44,45 @@ func test_save_system_normalizes_fixture_data() -> void:
         fail_test("save_system.gd should expose normalize_save_data")
         return
     var normalized = save_system.normalize_save_data(parsed)
-    assert_eq(normalized["schema_version"], 1)
+    var migrator_script := load("res://scripts/save/save_migrator.gd")
+    assert_not_null(migrator_script)
+    if migrator_script == null:
+        return
+
+    assert_eq(normalized["schema_version"], migrator_script.CURRENT_SCHEMA)
     assert_eq(normalized["day"], 1)
+    assert_true(typeof(normalized.get("inventory", {})) == TYPE_DICTIONARY)
+    assert_true(typeof(normalized.get("farm_plots", [])) == TYPE_ARRAY)
+
+func test_apply_to_session_restores_inventory_and_farm_plots() -> void:
+    if not FileAccess.file_exists("res://scripts/autoload/save_system.gd"):
+        fail_test("res://scripts/autoload/save_system.gd should exist")
+        return
+
+    var save_system_script := load("res://scripts/autoload/save_system.gd")
+    assert_not_null(save_system_script)
+    if save_system_script == null:
+        return
+
+    if SessionState.inventory.has_method("replace_with_item_totals"):
+        SessionState.inventory.replace_with_item_totals({})
+    SessionState.farm_plots = []
+
+    var save_system: Node = add_child_autofree(save_system_script.new())
+    save_system.apply_to_session({
+        "gold": 610,
+        "day": 3,
+        "season": "spring",
+        "inventory": {"parsnip_seed": 4, "parsnip": 2},
+        "farm_plots": [{
+            "x": 2,
+            "y": 5,
+            "plot": {"soil_state": "wet", "crop_id": "parsnip", "stage": 1, "watered": true}
+        }]
+    })
+
+    assert_eq(SessionState.gold, 610)
+    assert_eq(SessionState.day, 3)
+    assert_eq(SessionState.inventory.get_total("parsnip_seed"), 4)
+    assert_eq(SessionState.inventory.get_total("parsnip"), 2)
+    assert_eq(SessionState.farm_plots.size(), 1)

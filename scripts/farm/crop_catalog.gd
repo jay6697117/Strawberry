@@ -11,7 +11,7 @@ func load_all() -> Dictionary:
     if file == null:
         return {}
 
-    var parsed := JSON.parse_string(file.get_as_text())
+    var parsed: Variant = JSON.parse_string(file.get_as_text())
     if typeof(parsed) != TYPE_DICTIONARY:
         return {}
     return parsed
