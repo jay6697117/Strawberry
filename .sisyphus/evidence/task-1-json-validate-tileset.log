@@ -1,0 +1,22 @@
+{
+    "tile_size": 32,
+    "provenance": {
+        "active_runtime_source": "kenney",
+        "forbidden_sources": [
+            "external_oga"
+        ]
+    },
+    "textures": {
+        "backdrop": "res://assets/tiles/farm_backdrop.png",
+        "ground": "res://assets/tiles/ground_grass.png",
+        "soil_dry": "res://assets/tiles/soil_dry.png",
+        "soil_wet": "res://assets/tiles/soil_wet.png",
+        "crop_parsnip_stages": [
+            "res://assets/tiles/crop_parsnip_stage_0.png",
+            "res://assets/tiles/crop_parsnip_stage_1.png",
+            "res://assets/tiles/crop_parsnip_stage_2.png",
+            "res://assets/tiles/crop_parsnip_stage_3.png",
+            "res://assets/tiles/crop_parsnip_stage_4.png"
+        ]
+    }
+}

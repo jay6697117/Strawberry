@@ -1,32 +1,38 @@
 {
   "frame_rate": 8,
+  "provenance": {
+    "active_runtime_source": "kenney",
+    "forbidden_sources": [
+      "external_oga"
+    ]
+  },
   "frames": {
     "up": {
-      "idle": "res://assets/sprites/player/external_oga/up_idle.png",
+      "idle": "res://assets/sprites/player/up_idle.png",
       "walk": [
-        "res://assets/sprites/player/external_oga/up_walk_0.png",
-        "res://assets/sprites/player/external_oga/up_walk_1.png"
+        "res://assets/sprites/player/up_walk_0.png",
+        "res://assets/sprites/player/up_walk_1.png"
       ]
     },
     "down": {
-      "idle": "res://assets/sprites/player/external_oga/down_idle.png",
+      "idle": "res://assets/sprites/player/down_idle.png",
       "walk": [
-        "res://assets/sprites/player/external_oga/down_walk_0.png",
-        "res://assets/sprites/player/external_oga/down_walk_1.png"
+        "res://assets/sprites/player/down_walk_0.png",
+        "res://assets/sprites/player/down_walk_1.png"
       ]
     },
     "left": {
-      "idle": "res://assets/sprites/player/external_oga/left_idle.png",
+      "idle": "res://assets/sprites/player/left_idle.png",
       "walk": [
-        "res://assets/sprites/player/external_oga/left_walk_0.png",
-        "res://assets/sprites/player/external_oga/left_walk_1.png"
+        "res://assets/sprites/player/left_walk_0.png",
+        "res://assets/sprites/player/left_walk_1.png"
       ]
     },
     "right": {
-      "idle": "res://assets/sprites/player/external_oga/right_idle.png",
+      "idle": "res://assets/sprites/player/right_idle.png",
       "walk": [
-        "res://assets/sprites/player/external_oga/right_walk_0.png",
-        "res://assets/sprites/player/external_oga/right_walk_1.png"
+        "res://assets/sprites/player/right_walk_0.png",
+        "res://assets/sprites/player/right_walk_1.png"
       ]
     }
   }

@@ -52,11 +52,11 @@ Deliver a materially denser, more Stardew-like farm visual presentation by stand
 - New/updated tests in `test/unit/test_visual_resource_pipeline.gd` and integration tests for composition density and camera fit.
 
 ### Definition of Done
-- [ ] `./start.sh test` exits 0.
-- [ ] Visual provenance test proves active runtime paths do not depend on `external_oga`.
-- [ ] Composition density integration test passes with explicit numeric thresholds.
-- [ ] Camera/world-fit integration test passes for target resolutions.
-- [ ] Save/load and farm runtime loop tests remain green.
+- [x] `./start.sh test` exits 0.
+- [x] Visual provenance test proves active runtime paths do not depend on `external_oga`.
+- [x] Composition density integration test passes with explicit numeric thresholds.
+- [x] Camera/world-fit integration test passes for target resolutions.
+- [x] Save/load and farm runtime loop tests remain green.
 
 ### Must Have
 - Kenney-first runtime visual assets for active tiles/player.
@@ -121,7 +121,7 @@ Critical Path: 1 -> 2 -> 3 -> 4 -> 5
 
 ## TODOs
 
-- [ ] 1. Lock Kenney-First Runtime Asset Provenance
+- [x] 1. Lock Kenney-First Runtime Asset Provenance
 
   **What to do**:
   - Update active runtime style paths in `data/visual/player_style.json` and `data/visual/tileset_theme.json` to Kenney-first sources.
@@ -155,9 +155,9 @@ Critical Path: 1 -> 2 -> 3 -> 4 -> 5
   - `test/unit/test_visual_resource_pipeline.gd` - contract test location.
 
   **Acceptance Criteria**:
-  - [ ] `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_visual_resource_pipeline.gd -gexit` exits 0.
-  - [ ] Added assertions verify active runtime style paths do not contain `external_oga`.
-  - [ ] Runtime loader still resolves all declared textures/frames.
+  - [x] `godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_visual_resource_pipeline.gd -gexit` exits 0.
+  - [x] Added assertions verify active runtime style paths do not contain `external_oga`.
+  - [x] Runtime loader still resolves all declared textures/frames.
 
   **Agent-Executed QA Scenarios**:
 
@@ -192,7 +192,7 @@ Critical Path: 1 -> 2 -> 3 -> 4 -> 5
   - Files: `data/visual/player_style.json`, `data/visual/tileset_theme.json`, `test/unit/test_visual_resource_pipeline.gd`
   - Pre-commit: unit visual pipeline test command above
 
-- [ ] 2. Expand TileMap Layer Contract for Dense Composition
+- [x] 2. Expand TileMap Layer Contract for Dense Composition
 
   **What to do**:
   - Add non-gameplay visual layers in `scenes/farm/farm_world.tscn` (for example: `PathLayer`, `DecorLayer`, `WaterEdgeLayer`, `StructureLayer`) while preserving existing `GroundLayer`/`SoilLayer`/`CropLayer`.
@@ -225,9 +225,9 @@ Critical Path: 1 -> 2 -> 3 -> 4 -> 5
   - `scripts/farm/farm_world.gd` - caller integration points to render view.
 
   **Acceptance Criteria**:
-  - [ ] Existing integration tests for farm bootstrap still pass.
-  - [ ] New visual layers exist and are writable via render script.
-  - [ ] `configure/apply_plot/apply_all_plots` API remains backward compatible.
+  - [x] Existing integration tests for farm bootstrap still pass.
+  - [x] New visual layers exist and are writable via render script.
+  - [x] `configure/apply_plot/apply_all_plots` API remains backward compatible.
 
   **Agent-Executed QA Scenarios**:
 
@@ -261,7 +261,7 @@ Critical Path: 1 -> 2 -> 3 -> 4 -> 5
   - Files: `scenes/farm/farm_world.tscn`, `scripts/farm/farm_tilemap_view.gd`, related tests
   - Pre-commit: integration bootstrap test
 
-- [ ] 3. Implement Deterministic Dense Farm Composition Pass
+- [x] 3. Implement Deterministic Dense Farm Composition Pass
 
   **What to do**:
   - Extend `scripts/farm/farm_world.gd` with deterministic composition rules to stamp paths, field borders, tree belts, clustered props, and optional water-edge accents onto non-gameplay layers.
@@ -295,9 +295,9 @@ Critical Path: 1 -> 2 -> 3 -> 4 -> 5
   - `scripts/autoload/session_state.gd` - plot state source to preserve.
 
   **Acceptance Criteria**:
-  - [ ] New integration test proves deterministic density thresholds (same seed/config => same used cell counts).
-  - [ ] Decorative layers show non-trivial occupancy (set concrete minimums in test).
-  - [ ] Existing farm plot apply behavior remains unchanged.
+  - [x] New integration test proves deterministic density thresholds (same seed/config => same used cell counts).
+  - [x] Decorative layers show non-trivial occupancy (set concrete minimums in test).
+  - [x] Existing farm plot apply behavior remains unchanged.
 
   **Agent-Executed QA Scenarios**:
 
@@ -331,7 +331,7 @@ Critical Path: 1 -> 2 -> 3 -> 4 -> 5
   - Files: `scripts/farm/farm_world.gd`, density integration test, related visual config updates
   - Pre-commit: density integration test
 
-- [ ] 4. Harden Camera/World-Fit for Width-Fill Behavior
+- [x] 4. Harden Camera/World-Fit for Width-Fill Behavior
 
   **What to do**:
   - Refine camera limits/zoom logic in `scripts/farm/farm_world.gd` so runtime view avoids horizontal void across target resolutions.
@@ -363,9 +363,9 @@ Critical Path: 1 -> 2 -> 3 -> 4 -> 5
   - `scripts/farm/farm_tilemap_view.gd` - map dimensions used for bounds.
 
   **Acceptance Criteria**:
-  - [ ] Camera fit integration test passes all target resolutions.
-  - [ ] No horizontal blank-space condition detected by test assertions.
-  - [ ] Existing world bootstrap and loop tests remain green.
+  - [x] Camera fit integration test passes all target resolutions.
+  - [x] No horizontal blank-space condition detected by test assertions.
+  - [x] Existing world bootstrap and loop tests remain green.
 
   **Agent-Executed QA Scenarios**:
 
@@ -399,7 +399,7 @@ Critical Path: 1 -> 2 -> 3 -> 4 -> 5
   - Files: `scripts/farm/farm_world.gd`, camera fit integration test
   - Pre-commit: camera fit integration test
 
-- [ ] 5. Add Regression Net for Gameplay Loop + Save Compatibility
+- [x] 5. Add Regression Net for Gameplay Loop + Save Compatibility
 
   **What to do**:
   - Run and, if needed, strengthen tests covering save/load and farm runtime loop.
@@ -433,9 +433,9 @@ Critical Path: 1 -> 2 -> 3 -> 4 -> 5
   - `test/unit/test_visual_resource_pipeline.gd` - visual contracts that must remain green.
 
   **Acceptance Criteria**:
-  - [ ] Save-related tests pass.
-  - [ ] Farm runtime loop integration tests pass.
-  - [ ] Full test command passes with exit code 0.
+  - [x] Save-related tests pass.
+  - [x] Farm runtime loop integration tests pass.
+  - [x] Full test command passes with exit code 0.
 
   **Agent-Executed QA Scenarios**:
 
@@ -469,7 +469,7 @@ Critical Path: 1 -> 2 -> 3 -> 4 -> 5
   - Files: integration/unit regression tests touched in this phase
   - Pre-commit: `./start.sh test`
 
-- [ ] 6. Evidence and Handoff Packaging
+- [x] 6. Evidence and Handoff Packaging
 
   **What to do**:
   - Collect logs from all scenario commands into `.sisyphus/evidence/`.
@@ -499,8 +499,8 @@ Critical Path: 1 -> 2 -> 3 -> 4 -> 5
   - `README.md` - quick verification command conventions if needed.
 
   **Acceptance Criteria**:
-  - [ ] Evidence logs present for each task scenario.
-  - [ ] Final summary maps each acceptance criterion to a command and artifact path.
+  - [x] Evidence logs present for each task scenario.
+  - [x] Final summary maps each acceptance criterion to a command and artifact path.
 
   **Agent-Executed QA Scenarios**:
 
@@ -554,8 +554,8 @@ godot --headless -d -s --path "$PWD" addons/gut/gut_cmdln.gd -gtest=res://test/i
 ```
 
 ### Final Checklist
-- [ ] All Must Have conditions satisfied.
-- [ ] All Must NOT Have guardrails respected.
-- [ ] Kenney-first runtime provenance enforced by tests.
-- [ ] Width-fit behavior verified by automated integration checks.
-- [ ] Gameplay loop and save compatibility remain intact.
+- [x] All Must Have conditions satisfied.
+- [x] All Must NOT Have guardrails respected.
+- [x] Kenney-first runtime provenance enforced by tests.
+- [x] Width-fit behavior verified by automated integration checks.
+- [x] Gameplay loop and save compatibility remain intact.

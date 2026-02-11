@@ -1,5 +1,11 @@
 {
   "tile_size": 32,
+  "provenance": {
+    "active_runtime_source": "kenney",
+    "forbidden_sources": [
+      "external_oga"
+    ]
+  },
   "textures": {
     "backdrop": "res://assets/tiles/farm_backdrop.png",
     "ground": "res://assets/tiles/ground_grass.png",

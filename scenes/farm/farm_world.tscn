@@ -17,7 +17,19 @@ texture_filter = 0
 [node name="GroundLayer" type="TileMap" parent="FarmTilemapView"]
 texture_filter = 0
 
+[node name="PathLayer" type="TileMap" parent="FarmTilemapView"]
+texture_filter = 0
+
 [node name="SoilLayer" type="TileMap" parent="FarmTilemapView"]
+texture_filter = 0
+
+[node name="WaterEdgeLayer" type="TileMap" parent="FarmTilemapView"]
+texture_filter = 0
+
+[node name="StructureLayer" type="TileMap" parent="FarmTilemapView"]
+texture_filter = 0
+
+[node name="DecorLayer" type="TileMap" parent="FarmTilemapView"]
 texture_filter = 0
 
 [node name="CropLayer" type="TileMap" parent="FarmTilemapView"]

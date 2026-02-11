@@ -1,0 +1,131 @@
+Godot Engine v4.6.stable.official.89cea1439 - https://godotengine.org
+
+---  GUT  ---
+[1m[INFO]:  [0musing [/Users/zhangjinhui/Library/Application Support/Godot/app_userdata/Strawberry] for temporary output.
+Godot version:  4.6.0
+GUT version:  9.6.0
+[4m
+
+res://test/unit/test_crop_growth_service.gd
+[0m* test_watered_crop_advances_one_stage_per_day
+[1m1/1 passed.
+[0m[4m
+
+res://test/unit/test_day_transaction_order.gd
+[0m* test_day_transaction_emits_ordered_steps
+[1m1/1 passed.
+[0m[4m
+
+res://test/unit/test_dialogue_service.gd
+[0m* test_dialogue_service_picks_matching_dialogue
+[1m1/1 passed.
+[0m[4m
+
+res://test/unit/test_farm_grid_state_machine.gd
+[0m* test_till_then_water_changes_state
+[1m1/1 passed.
+[0m[4m
+
+res://test/unit/test_game_clock.gd
+[0m* test_clock_advances_in_10_minute_ticks
+[1m1/1 passed.
+[0m[4m
+
+res://test/unit/test_inventory_model.gd
+[0m* test_inventory_stacks_same_item
+[1m1/1 passed.
+[0m[4m
+
+res://test/unit/test_npc_schedule_service.gd
+[0m* test_schedule_returns_expected_slot
+[1m1/1 passed.
+[0m[4m
+
+res://test/unit/test_project_contract.gd
+[0m* test_main_scene_and_autoload_contract
+[1m1/1 passed.
+[0m[4m
+
+res://test/unit/test_save_system.gd
+[0m* test_save_migrates_to_current_schema
+* test_save_system_normalizes_fixture_data
+* test_apply_to_session_restores_inventory_and_farm_plots
+[1m3/3 passed.
+[0m[4m
+
+res://test/unit/test_shipping_bin_service.gd
+[0m* test_shipping_bin_settlement_adds_gold_and_clears_queue
+[1m1/1 passed.
+[0m[4m
+
+res://test/unit/test_tool_targeting.gd
+[0m* test_front_cell_uses_facing_direction
+[1m1/1 passed.
+[0m[4m
+
+res://test/unit/test_visual_resource_pipeline.gd
+[0m* test_tileset_theme_declares_external_texture_paths
+* test_player_style_declares_external_sprite_frames
+[1m2/2 passed.
+[0m[4m
+
+res://test/integration/test_farm_camera_world_fit.gd
+[0m* test_camera_world_fit_prevents_horizontal_void_for_target_resolutions
+* test_camera_world_fit_stays_stable_across_resize_sequence
+[1m2/2 passed.
+[0m[4m
+
+res://test/integration/test_farm_map_composition_density.gd
+[0m* test_dense_composition_populates_non_gameplay_layers_above_thresholds
+* test_dense_composition_is_deterministic_for_same_world_config
+[1m2/2 passed.
+[0m[4m
+
+res://test/integration/test_farm_world_runtime_loop.gd
+[0m* test_shipping_settles_on_end_day_instead_of_immediately
+* test_resetting_soil_clears_watered_flag
+[1m2/2 passed.
+[0m[4m
+
+res://test/integration/test_full_day_loop.gd
+[0m* test_core_loop_from_seed_to_sell_updates_gold
+* test_ui_files_exist_for_hud_and_shop
+[1m2/2 passed.
+[0m[4m
+
+res://test/integration/test_main_bootstrap.gd
+[0m* test_main_instantiates_world_and_ui
+* test_world_contains_playable_farm_nodes
+* test_farm_world_emits_runtime_hud_signals
+* test_player_and_hud_runtime_nodes_are_wired
+* test_farm_view_uses_layered_resource_nodes
+* test_farm_view_layers_are_tilemaps
+* test_farm_view_api_remains_backward_compatible
+* test_farm_view_decorative_layers_are_writable
+* test_player_uses_visual_sprite_node
+[1m9/9 passed.
+[0m[4m
+
+res://test/integration/test_save_load_roundtrip.gd
+[0m* test_save_load_roundtrip_preserves_state
+* test_gameplay_loop_state_is_saveable
+[1m2/2 passed.
+[0m
+
+
+
+[33m==============================================
+[0m[33m= Run Summary
+[0m[33m==============================================
+[0m
+Totals
+------
+Scripts              18
+Tests                34
+Passing Tests        34
+Asserts             278
+Time              0.626s
+
+
+[32m---- All tests passed! ----
+[0m

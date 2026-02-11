@@ -6,7 +6,11 @@ const REQUIRED_STAGE_COUNT := 5
 
 @onready var backdrop: Sprite2D = $Backdrop
 @onready var ground_layer: TileMap = $GroundLayer
+@onready var path_layer: TileMap = $PathLayer
 @onready var soil_layer: TileMap = $SoilLayer
+@onready var water_edge_layer: TileMap = $WaterEdgeLayer
+@onready var structure_layer: TileMap = $StructureLayer
+@onready var decor_layer: TileMap = $DecorLayer
 @onready var crop_layer: TileMap = $CropLayer
 
 var _tile_size: int = DEFAULT_TILE_SIZE
@@ -17,12 +21,20 @@ var _theme: Dictionary = {}
 
 var _backdrop_texture: Texture2D
 var _ground_texture: Texture2D
+var _path_texture: Texture2D
 var _dry_soil_texture: Texture2D
 var _wet_soil_texture: Texture2D
+var _water_edge_texture: Texture2D
+var _structure_texture: Texture2D
+var _decor_texture: Texture2D
 var _crop_stage_textures: Array[Texture2D] = []
 
 var _ground_source_id: int = -1
+var _path_source_id: int = -1
 var _soil_source_ids: Array[int] = []
+var _water_edge_source_id: int = -1
+var _structure_source_id: int = -1
+var _decor_source_id: int = -1
 var _crop_source_ids: Array[int] = []
 
 func configure(tile_size: int, grid_width: int, grid_height: int) -> void:
@@ -37,6 +49,7 @@ func configure(tile_size: int, grid_width: int, grid_height: int) -> void:
     _setup_backdrop()
     _setup_tilemaps()
     _paint_ground_layer()
+    _paint_static_visual_layers()
     _rebuild_dynamic_layers()
 
 func apply_plot(cell: Vector2i, plot: Dictionary) -> void:
@@ -75,8 +88,12 @@ func _load_external_textures() -> void:
 
     _backdrop_texture = _load_png_texture(String(textures.get("backdrop", "")), Color(0.42, 0.69, 0.38))
     _ground_texture = _load_png_texture(String(textures.get("ground", "")), Color(0.45, 0.72, 0.37))
+    _path_texture = _load_png_texture(String(textures.get("path", "")), Color(0.73, 0.66, 0.48))
     _dry_soil_texture = _load_png_texture(String(textures.get("soil_dry", "")), Color(0.62, 0.43, 0.28))
     _wet_soil_texture = _load_png_texture(String(textures.get("soil_wet", "")), Color(0.42, 0.31, 0.22))
+    _water_edge_texture = _load_png_texture(String(textures.get("water_edge", "")), Color(0.27, 0.52, 0.71, 0.9))
+    _structure_texture = _load_png_texture(String(textures.get("structure", "")), Color(0.62, 0.47, 0.36))
+    _decor_texture = _load_png_texture(String(textures.get("decor", "")), Color(0.36, 0.67, 0.30, 0.95))
 
     _crop_stage_textures.clear()
     var stage_paths := _extract_string_array(textures.get("crop_parsnip_stages", []))
@@ -97,17 +114,37 @@ func _setup_tilemaps() -> void:
     ground_layer.tile_set = ground_setup["tileset"] as TileSet
     _ground_source_id = int((ground_setup["source_ids"] as Array)[0])
 
+    var path_setup := _build_tileset([_path_texture])
+    path_layer.tile_set = path_setup["tileset"] as TileSet
+    _path_source_id = int((path_setup["source_ids"] as Array)[0])
+
     var soil_setup := _build_tileset([_dry_soil_texture, _wet_soil_texture])
     soil_layer.tile_set = soil_setup["tileset"] as TileSet
     _soil_source_ids = _to_int_array(soil_setup["source_ids"] as Array)
+
+    var water_edge_setup := _build_tileset([_water_edge_texture])
+    water_edge_layer.tile_set = water_edge_setup["tileset"] as TileSet
+    _water_edge_source_id = int((water_edge_setup["source_ids"] as Array)[0])
+
+    var structure_setup := _build_tileset([_structure_texture])
+    structure_layer.tile_set = structure_setup["tileset"] as TileSet
+    _structure_source_id = int((structure_setup["source_ids"] as Array)[0])
+
+    var decor_setup := _build_tileset([_decor_texture])
+    decor_layer.tile_set = decor_setup["tileset"] as TileSet
+    _decor_source_id = int((decor_setup["source_ids"] as Array)[0])
 
     var crop_setup := _build_tileset(_crop_stage_textures)
     crop_layer.tile_set = crop_setup["tileset"] as TileSet
     _crop_source_ids = _to_int_array(crop_setup["source_ids"] as Array)
 
-    _configure_tilemap(ground_layer)
-    _configure_tilemap(soil_layer)
-    _configure_tilemap(crop_layer)
+    _configure_tilemap(ground_layer, 0)
+    _configure_tilemap(path_layer, 1)
+    _configure_tilemap(soil_layer, 2)
+    _configure_tilemap(water_edge_layer, 3)
+    _configure_tilemap(structure_layer, 4)
+    _configure_tilemap(decor_layer, 5)
+    _configure_tilemap(crop_layer, 6)
 
 func _build_tileset(textures: Array[Texture2D]) -> Dictionary:
     var tile_set := TileSet.new()
@@ -129,15 +166,58 @@ func _build_tileset(textures: Array[Texture2D]) -> Dictionary:
         "source_ids": source_ids
     }
 
-func _configure_tilemap(tilemap: TileMap) -> void:
+func _configure_tilemap(tilemap: TileMap, z_index_value: int) -> void:
     tilemap.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
     tilemap.y_sort_enabled = false
+    tilemap.z_index = z_index_value
 
 func _paint_ground_layer() -> void:
     ground_layer.clear()
     for y in _grid_height:
         for x in _grid_width:
             ground_layer.set_cell(0, Vector2i(x, y), _ground_source_id, Vector2i.ZERO)
+
+func _paint_static_visual_layers() -> void:
+    path_layer.clear()
+    water_edge_layer.clear()
+    structure_layer.clear()
+    decor_layer.clear()
+
+    var center_y := int(_grid_height / 2.0)
+    var path_stride := 3
+    for y in _grid_height:
+        for x in _grid_width:
+            var cell := Vector2i(x, y)
+            if x == 0 or y == 0 or x == _grid_width - 1 or y == _grid_height - 1:
+                _set_visual_cell(path_layer, _path_source_id, cell)
+                continue
+            if y == center_y and x % path_stride != 1:
+                _set_visual_cell(path_layer, _path_source_id, cell)
+
+    if _grid_height > 2:
+        var shore_y := _grid_height - 2
+        for x in _grid_width:
+            _set_visual_cell(water_edge_layer, _water_edge_source_id, Vector2i(x, shore_y))
+    if _grid_width > 2:
+        var edge_x := _grid_width - 2
+        for y in _grid_height:
+            _set_visual_cell(water_edge_layer, _water_edge_source_id, Vector2i(edge_x, y))
+
+    var structure_cells: Array[Vector2i] = [
+        Vector2i(2, 2),
+        Vector2i(_grid_width - 3, 2),
+        Vector2i(2, _grid_height - 3),
+        Vector2i(_grid_width - 3, _grid_height - 3)
+    ]
+    for cell in structure_cells:
+        _set_visual_cell(structure_layer, _structure_source_id, cell)
+
+    for y in _grid_height:
+        for x in _grid_width:
+            if x < 2 or y < 2 or x > _grid_width - 3 or y > _grid_height - 3:
+                continue
+            if (x + (y * 2)) % 11 == 0:
+                _set_visual_cell(decor_layer, _decor_source_id, Vector2i(x, y))
 
 func _rebuild_dynamic_layers() -> void:
     soil_layer.clear()
@@ -169,6 +249,16 @@ func _refresh_cell(cell: Vector2i) -> void:
 
 func _erase_tile(tilemap: TileMap, cell: Vector2i) -> void:
     tilemap.set_cell(0, cell, -1)
+
+func _set_visual_cell(tilemap: TileMap, source_id: int, cell: Vector2i) -> void:
+    if source_id < 0:
+        return
+    if not _is_inside_view_bounds(cell):
+        return
+    tilemap.set_cell(0, cell, source_id, Vector2i.ZERO)
+
+func _is_inside_view_bounds(cell: Vector2i) -> bool:
+    return cell.x >= 0 and cell.y >= 0 and cell.x < _grid_width and cell.y < _grid_height
 
 func _to_int_array(values: Array) -> Array[int]:
     var out: Array[int] = []

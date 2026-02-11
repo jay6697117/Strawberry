@@ -7,6 +7,8 @@ const TILE_SIZE := 32
 const GRID_WIDTH := 64
 const GRID_HEIGHT := 36
 const MAX_CROP_STAGE := 4
+const PATH_COLUMN_STRIDE := 8
+const PATH_ROW_STRIDE := 6
 
 @onready var farm_tilemap_view: Node2D = $FarmTilemapView
 @onready var player: CharacterBody2D = $Player
@@ -20,6 +22,7 @@ var _crop_data: Dictionary = {}
 var _day_steps: Array[String] = []
 var _latest_status: String = ""
 var _camera_ref: Camera2D
+var _camera_base_zoom := Vector2.ONE
 
 func _ready() -> void:
     _crop_data = _crop_catalog.load_all()
@@ -66,10 +69,12 @@ func _initialize_player() -> void:
 func _initialize_view() -> void:
     if farm_tilemap_view.has_method("configure"):
         farm_tilemap_view.configure(TILE_SIZE, GRID_WIDTH, GRID_HEIGHT)
+    _apply_dense_composition_pass()
 
     var camera := player.get_node_or_null("Camera2D") as Camera2D
     if camera != null:
         _camera_ref = camera
+        _camera_base_zoom = camera.zoom
         camera.position_smoothing_enabled = true
         camera.position_smoothing_speed = 6.0
         _configure_camera_limits(camera)
@@ -78,28 +83,236 @@ func _initialize_view() -> void:
         if viewport != null and not viewport.size_changed.is_connected(_on_viewport_size_changed):
             viewport.size_changed.connect(_on_viewport_size_changed)
 
+func _apply_dense_composition_pass() -> void:
+    if farm_tilemap_view == null:
+        return
+
+    var path_layer := farm_tilemap_view.get_node_or_null("PathLayer") as TileMap
+    var decor_layer := farm_tilemap_view.get_node_or_null("DecorLayer") as TileMap
+    var water_edge_layer := farm_tilemap_view.get_node_or_null("WaterEdgeLayer") as TileMap
+    var structure_layer := farm_tilemap_view.get_node_or_null("StructureLayer") as TileMap
+    if path_layer == null or decor_layer == null or water_edge_layer == null or structure_layer == null:
+        return
+
+    var path_source_id := _primary_source_id(path_layer)
+    var decor_source_id := _primary_source_id(decor_layer)
+    var water_source_id := _primary_source_id(water_edge_layer)
+    var structure_source_id := _primary_source_id(structure_layer)
+    if path_source_id < 0 or decor_source_id < 0 or water_source_id < 0 or structure_source_id < 0:
+        return
+
+    path_layer.clear()
+    decor_layer.clear()
+    water_edge_layer.clear()
+    structure_layer.clear()
+
+    _stamp_path_network(path_layer, path_source_id)
+    _stamp_field_borders(structure_layer, structure_source_id)
+    _stamp_tree_belts(decor_layer, decor_source_id)
+    _stamp_prop_clusters(decor_layer, structure_layer, decor_source_id, structure_source_id)
+    _stamp_water_edge_accents(water_edge_layer, water_source_id)
+
+func _primary_source_id(tilemap: TileMap) -> int:
+    var tile_set := tilemap.tile_set
+    if tile_set == null:
+        return -1
+    if tile_set.get_source_count() <= 0:
+        return -1
+    return int(tile_set.get_source_id(0))
+
+func _stamp_path_network(path_layer: TileMap, source_id: int) -> void:
+    for x in range(GRID_WIDTH):
+        _set_non_gameplay_cell(path_layer, source_id, Vector2i(x, 0))
+        _set_non_gameplay_cell(path_layer, source_id, Vector2i(x, GRID_HEIGHT - 1))
+
+    for y in range(GRID_HEIGHT):
+        _set_non_gameplay_cell(path_layer, source_id, Vector2i(0, y))
+        _set_non_gameplay_cell(path_layer, source_id, Vector2i(GRID_WIDTH - 1, y))
+
+    for y in range(PATH_ROW_STRIDE, GRID_HEIGHT - 1, PATH_ROW_STRIDE):
+        for x in range(1, GRID_WIDTH - 1):
+            _set_non_gameplay_cell(path_layer, source_id, Vector2i(x, y))
+
+    for x in range(PATH_COLUMN_STRIDE, GRID_WIDTH - 1, PATH_COLUMN_STRIDE):
+        for y in range(1, GRID_HEIGHT - 1):
+            _set_non_gameplay_cell(path_layer, source_id, Vector2i(x, y))
+
+    var center_y := int(GRID_HEIGHT / 2.0)
+    var center_x := int(GRID_WIDTH / 2.0)
+
+    for x in range(1, GRID_WIDTH - 1):
+        if x % 5 == 0:
+            continue
+        _set_non_gameplay_cell(path_layer, source_id, Vector2i(x, center_y))
+
+    for y in range(1, GRID_HEIGHT - 1):
+        if y % 4 == 1:
+            continue
+        _set_non_gameplay_cell(path_layer, source_id, Vector2i(center_x, y))
+
+func _stamp_field_borders(structure_layer: TileMap, source_id: int) -> void:
+    var field_rects: Array[Rect2i] = [
+        Rect2i(Vector2i(6, 5), Vector2i(14, 9)),
+        Rect2i(Vector2i(24, 5), Vector2i(14, 9)),
+        Rect2i(Vector2i(42, 5), Vector2i(14, 9)),
+        Rect2i(Vector2i(15, 19), Vector2i(18, 10)),
+        Rect2i(Vector2i(37, 19), Vector2i(18, 10))
+    ]
+
+    for rect in field_rects:
+        _stamp_rect_outline(structure_layer, source_id, rect)
+
+func _stamp_rect_outline(tilemap: TileMap, source_id: int, rect: Rect2i) -> void:
+    var left := rect.position.x
+    var top := rect.position.y
+    var right := rect.position.x + rect.size.x - 1
+    var bottom := rect.position.y + rect.size.y - 1
+
+    for x in range(left, right + 1):
+        _set_non_gameplay_cell(tilemap, source_id, Vector2i(x, top))
+        _set_non_gameplay_cell(tilemap, source_id, Vector2i(x, bottom))
+
+    for y in range(top + 1, bottom):
+        _set_non_gameplay_cell(tilemap, source_id, Vector2i(left, y))
+        _set_non_gameplay_cell(tilemap, source_id, Vector2i(right, y))
+
+func _stamp_tree_belts(decor_layer: TileMap, source_id: int) -> void:
+    for y in range(2, GRID_HEIGHT - 2):
+        if y % 2 != 0 and y % 3 != 0:
+            continue
+        _set_non_gameplay_cell(decor_layer, source_id, Vector2i(2, y))
+        _set_non_gameplay_cell(decor_layer, source_id, Vector2i(3, y))
+        _set_non_gameplay_cell(decor_layer, source_id, Vector2i(GRID_WIDTH - 4, y))
+        _set_non_gameplay_cell(decor_layer, source_id, Vector2i(GRID_WIDTH - 3, y))
+
+    for x in range(4, GRID_WIDTH - 4):
+        if x % 2 != 0:
+            continue
+        _set_non_gameplay_cell(decor_layer, source_id, Vector2i(x, 2))
+        _set_non_gameplay_cell(decor_layer, source_id, Vector2i(x, 3))
+        _set_non_gameplay_cell(decor_layer, source_id, Vector2i(x, GRID_HEIGHT - 4))
+        _set_non_gameplay_cell(decor_layer, source_id, Vector2i(x, GRID_HEIGHT - 3))
+
+    for y in range(8, GRID_HEIGHT - 8, 4):
+        for x in range(8, GRID_WIDTH - 8, 6):
+            if (x + y) % 3 == 1:
+                continue
+            _set_non_gameplay_cell(decor_layer, source_id, Vector2i(x, y))
+
+func _stamp_prop_clusters(
+    decor_layer: TileMap,
+    structure_layer: TileMap,
+    decor_source_id: int,
+    structure_source_id: int
+) -> void:
+    var anchors: Array[Vector2i] = [
+        Vector2i(10, 10),
+        Vector2i(22, 11),
+        Vector2i(34, 10),
+        Vector2i(46, 12),
+        Vector2i(14, 24),
+        Vector2i(28, 23),
+        Vector2i(42, 24),
+        Vector2i(54, 22)
+    ]
+
+    var decor_offsets: Array[Vector2i] = [
+        Vector2i(-2, 0),
+        Vector2i(-1, 0),
+        Vector2i(1, 0),
+        Vector2i(2, 0),
+        Vector2i(0, -2),
+        Vector2i(0, -1),
+        Vector2i(0, 1),
+        Vector2i(0, 2),
+        Vector2i(-1, -1),
+        Vector2i(1, -1),
+        Vector2i(-1, 1),
+        Vector2i(1, 1)
+    ]
+    var structure_offsets: Array[Vector2i] = [
+        Vector2i.ZERO,
+        Vector2i(1, 0),
+        Vector2i(0, 1)
+    ]
+
+    for anchor in anchors:
+        for offset in decor_offsets:
+            _set_non_gameplay_cell(decor_layer, decor_source_id, anchor + offset)
+        for offset in structure_offsets:
+            _set_non_gameplay_cell(structure_layer, structure_source_id, anchor + offset)
+
+func _stamp_water_edge_accents(water_edge_layer: TileMap, source_id: int) -> void:
+    var shore_y := GRID_HEIGHT - 2
+    for x in range(GRID_WIDTH):
+        _set_non_gameplay_cell(water_edge_layer, source_id, Vector2i(x, shore_y))
+
+    var river_x := GRID_WIDTH - 2
+    for y in range(GRID_HEIGHT):
+        _set_non_gameplay_cell(water_edge_layer, source_id, Vector2i(river_x, y))
+
+    var accent_rows := [GRID_HEIGHT - 5, GRID_HEIGHT - 7]
+    for row in accent_rows:
+        for x in range(1, GRID_WIDTH - 1):
+            if x % 2 != 0 and x % 3 != 0:
+                continue
+            _set_non_gameplay_cell(water_edge_layer, source_id, Vector2i(x, row))
+
+    for y in range(2, GRID_HEIGHT - 2):
+        if y % 2 == 0:
+            continue
+        _set_non_gameplay_cell(water_edge_layer, source_id, Vector2i(1, y))
+
+func _set_non_gameplay_cell(tilemap: TileMap, source_id: int, cell: Vector2i) -> void:
+    if source_id < 0:
+        return
+    if not _is_inside_grid(cell):
+        return
+    tilemap.set_cell(0, cell, source_id, Vector2i.ZERO)
+
 func _on_viewport_size_changed() -> void:
     if _camera_ref != null:
         _configure_camera_limits(_camera_ref)
 
-func _configure_camera_limits(camera: Camera2D) -> void:
+func _configure_camera_limits(camera: Camera2D, override_viewport_size: Vector2 = Vector2.ZERO) -> void:
     var map_width := GRID_WIDTH * TILE_SIZE
     var map_height := GRID_HEIGHT * TILE_SIZE
-    var viewport_size := get_viewport_rect().size
+    var viewport_size := override_viewport_size
+    if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
+        viewport_size = get_viewport_rect().size
+    if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
+        return
+
+    var base_zoom := _camera_base_zoom
+    if base_zoom.x <= 0.0 or base_zoom.y <= 0.0:
+        base_zoom = camera.zoom
+    if base_zoom.x <= 0.0 or base_zoom.y <= 0.0:
+        base_zoom = Vector2.ONE
+
+    var base_zoom_value := minf(base_zoom.x, base_zoom.y)
+    var max_zoom_x := float(map_width) / viewport_size.x
+    var max_zoom_y := float(map_height) / viewport_size.y
+    var max_zoom_for_fit := minf(max_zoom_x, max_zoom_y)
+    var fit_zoom_value := maxf(base_zoom_value, 0.01)
+    if max_zoom_for_fit < base_zoom_value:
+        fit_zoom_value = maxf(max_zoom_for_fit - 0.0001, 0.01)
+    camera.zoom = Vector2(fit_zoom_value, fit_zoom_value)
 
     var half_width := int(ceil((viewport_size.x * 0.5) * camera.zoom.x))
     var half_height := int(ceil((viewport_size.y * 0.5) * camera.zoom.y))
 
     if map_width <= half_width * 2:
-        camera.limit_left = 0
-        camera.limit_right = map_width
+        var center_x := int(map_width * 0.5)
+        camera.limit_left = center_x
+        camera.limit_right = center_x
     else:
         camera.limit_left = half_width
         camera.limit_right = map_width - half_width
 
     if map_height <= half_height * 2:
-        camera.limit_top = 0
-        camera.limit_bottom = map_height
+        var center_y := int(map_height * 0.5)
+        camera.limit_top = center_y
+        camera.limit_bottom = center_y
     else:
         camera.limit_top = half_height
         camera.limit_bottom = map_height - half_height
