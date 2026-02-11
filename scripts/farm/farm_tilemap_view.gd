@@ -1,71 +1,210 @@
 extends Node2D
 
-const GROUND_COLOR := Color(0.29, 0.53, 0.30)
-const GRID_LINE_COLOR := Color(0.0, 0.0, 0.0, 0.18)
-const DRY_SOIL_COLOR := Color(0.53, 0.36, 0.21)
-const WET_SOIL_COLOR := Color(0.32, 0.22, 0.14)
-const CROP_COLOR_EARLY := Color(0.36, 0.69, 0.28)
-const CROP_COLOR_LATE := Color(0.64, 0.86, 0.34)
+const TILE_THEME_PATH := "res://data/visual/tileset_theme.json"
+const DEFAULT_TILE_SIZE := 32
 
-var _tile_size: int = 32
+@onready var ground_layer: Node2D = $GroundLayer
+@onready var soil_layer: Node2D = $SoilLayer
+@onready var crop_layer: Node2D = $CropLayer
+
+var _tile_size: int = DEFAULT_TILE_SIZE
 var _grid_width: int = 32
 var _grid_height: int = 18
 var _plots: Dictionary = {}
+var _theme: Dictionary = {}
+var _palette: Dictionary = {}
+
+var _ground_texture: Texture2D
+var _dry_soil_texture: Texture2D
+var _wet_soil_texture: Texture2D
+var _crop_stage_textures: Array[Texture2D] = []
+
+var _soil_sprites: Dictionary = {}
+var _crop_sprites: Dictionary = {}
+
+func _ready() -> void:
+    _load_theme()
 
 func configure(tile_size: int, grid_width: int, grid_height: int) -> void:
-    _tile_size = maxi(tile_size, 8)
+    _load_theme()
+    var configured_tile_size := int(_theme.get("tile_size", tile_size))
+    _tile_size = maxi(configured_tile_size, 8)
     _grid_width = maxi(grid_width, 1)
     _grid_height = maxi(grid_height, 1)
-    queue_redraw()
+
+    _build_textures()
+    _rebuild_ground_layer()
+    _rebuild_dynamic_layers()
 
 func apply_plot(cell: Vector2i, plot: Dictionary) -> void:
     if plot.is_empty():
         _plots.erase(cell)
     else:
         _plots[cell] = plot.duplicate(true)
-    queue_redraw()
+
+    _refresh_cell(cell)
 
 func apply_all_plots(plots: Dictionary) -> void:
     _plots.clear()
     for cell in plots.keys():
         _plots[cell] = Dictionary(plots[cell]).duplicate(true)
-    queue_redraw()
 
-func _draw() -> void:
-    var full_rect := Rect2(Vector2.ZERO, Vector2(_grid_width * _tile_size, _grid_height * _tile_size))
-    draw_rect(full_rect, GROUND_COLOR, true)
+    _rebuild_dynamic_layers()
 
+func _load_theme() -> void:
+    _theme = {}
+    _palette = {}
+    if FileAccess.file_exists(TILE_THEME_PATH):
+        var file := FileAccess.open(TILE_THEME_PATH, FileAccess.READ)
+        if file != null:
+            var parsed: Variant = JSON.parse_string(file.get_as_text())
+            if typeof(parsed) == TYPE_DICTIONARY:
+                _theme = Dictionary(parsed)
+                var palette_data: Variant = _theme.get("palette", {})
+                if typeof(palette_data) == TYPE_DICTIONARY:
+                    _palette = Dictionary(palette_data)
+
+func _build_textures() -> void:
+    var grass_base := _color("grass_base", Color(0.46, 0.72, 0.37))
+    var grass_shadow := _color("grass_shadow", Color(0.35, 0.57, 0.28))
+    var grass_light := _color("grass_light", Color(0.56, 0.81, 0.42))
+    var soil_dry_base := _color("soil_dry_base", Color(0.62, 0.43, 0.28))
+    var soil_dry_shadow := _color("soil_dry_shadow", Color(0.46, 0.31, 0.19))
+    var soil_wet_base := _color("soil_wet_base", Color(0.41, 0.29, 0.20))
+    var soil_wet_shadow := _color("soil_wet_shadow", Color(0.31, 0.22, 0.15))
+
+    _ground_texture = _create_soil_tile(grass_base, grass_shadow, grass_light)
+    _dry_soil_texture = _create_soil_tile(soil_dry_base, soil_dry_shadow, soil_dry_base.lightened(0.1))
+    _wet_soil_texture = _create_soil_tile(soil_wet_base, soil_wet_shadow, soil_wet_base.lightened(0.08))
+
+    _crop_stage_textures.clear()
+    for stage in 5:
+        _crop_stage_textures.append(_create_crop_texture(stage))
+
+func _create_soil_tile(base: Color, shadow: Color, highlight: Color) -> Texture2D:
+    var image := Image.create(_tile_size, _tile_size, false, Image.FORMAT_RGBA8)
+    image.fill(base)
+
+    for y in _tile_size:
+        for x in _tile_size:
+            if ((x * 5 + y * 3) % 17) == 0:
+                image.set_pixel(x, y, highlight)
+            elif ((x * 7 + y * 11) % 23) == 0:
+                image.set_pixel(x, y, shadow)
+
+    var outline := _color("outline", Color(0.16, 0.21, 0.15))
+    for i in _tile_size:
+        image.set_pixel(i, 0, outline)
+        image.set_pixel(i, _tile_size - 1, outline)
+        image.set_pixel(0, i, outline)
+        image.set_pixel(_tile_size - 1, i, outline)
+
+    return ImageTexture.create_from_image(image)
+
+func _create_crop_texture(stage: int) -> Texture2D:
+    var transparent := Color(0.0, 0.0, 0.0, 0.0)
+    var image := Image.create(_tile_size, _tile_size, false, Image.FORMAT_RGBA8)
+    image.fill(transparent)
+
+    var stem := _color("crop_stem", Color(0.30, 0.55, 0.25))
+    var leaf := _color("crop_leaf", Color(0.45, 0.78, 0.37))
+    var ripe := _color("crop_ripe", Color(0.95, 0.84, 0.42))
+
+    var center := int(_tile_size / 2.0)
+    var base_y := _tile_size - 8
+    var height := 4 + stage * 4
+    for i in height:
+        image.set_pixel(center, base_y - i, stem)
+
+    for offset in 2 + stage:
+        var y := base_y - (offset * 2)
+        if y < 2:
+            continue
+        image.set_pixel(center - 1, y, leaf)
+        image.set_pixel(center + 1, y, leaf)
+
+    if stage >= 4:
+        image.set_pixel(center - 2, base_y - height + 2, ripe)
+        image.set_pixel(center, base_y - height, ripe)
+        image.set_pixel(center + 2, base_y - height + 2, ripe)
+
+    return ImageTexture.create_from_image(image)
+
+func _rebuild_ground_layer() -> void:
+    _clear_layer_children(ground_layer)
     for y in _grid_height:
         for x in _grid_width:
-            var rect := Rect2(Vector2(x * _tile_size, y * _tile_size), Vector2(_tile_size, _tile_size))
-            draw_rect(rect, GRID_LINE_COLOR, false, 1.0)
+            var sprite := Sprite2D.new()
+            sprite.texture = _ground_texture
+            sprite.position = _cell_center(Vector2i(x, y))
+            sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+            ground_layer.add_child(sprite)
+
+func _rebuild_dynamic_layers() -> void:
+    _clear_sprite_map(_soil_sprites)
+    _clear_sprite_map(_crop_sprites)
 
     for cell in _plots.keys():
-        var plot: Dictionary = _plots[cell]
-        _draw_plot(cell, plot)
+        _refresh_cell(cell)
 
-func _draw_plot(cell: Vector2i, plot: Dictionary) -> void:
-    var cell_rect := Rect2(Vector2(cell.x * _tile_size, cell.y * _tile_size), Vector2(_tile_size, _tile_size))
-    var inset_rect := cell_rect.grow(-1.5)
+func _refresh_cell(cell: Vector2i) -> void:
+    var plot := Dictionary(_plots.get(cell, {}))
+    if plot.is_empty():
+        _erase_sprite(_soil_sprites, cell)
+        _erase_sprite(_crop_sprites, cell)
+        return
 
     var soil_state := String(plot.get("soil_state", "dry"))
-    var soil_color := DRY_SOIL_COLOR
+    var soil_texture: Texture2D = _dry_soil_texture
     if soil_state == "wet":
-        soil_color = WET_SOIL_COLOR
-    draw_rect(inset_rect, soil_color, true)
+        soil_texture = _wet_soil_texture
+    _set_sprite(_soil_sprites, soil_layer, cell, soil_texture)
 
     var crop_id := String(plot.get("crop_id", ""))
     if crop_id.is_empty():
+        _erase_sprite(_crop_sprites, cell)
         return
 
-    var stage := maxi(int(plot.get("stage", 0)), 0)
-    var ratio := clampf(float(stage) / 4.0, 0.0, 1.0)
-    var crop_color := CROP_COLOR_EARLY.lerp(CROP_COLOR_LATE, ratio)
-    var crop_rect := inset_rect.grow(-float(_tile_size) * 0.26)
-    draw_rect(crop_rect, crop_color, true)
+    var stage := clampi(int(plot.get("stage", 0)), 0, _crop_stage_textures.size() - 1)
+    _set_sprite(_crop_sprites, crop_layer, cell, _crop_stage_textures[stage])
 
-    if stage >= 4:
-        var center := crop_rect.get_center()
-        draw_circle(center + Vector2(-4.0, -2.0), 2.5, Color(1.0, 0.88, 0.45))
-        draw_circle(center + Vector2(0.0, -4.0), 2.5, Color(1.0, 0.83, 0.35))
-        draw_circle(center + Vector2(4.0, -2.0), 2.5, Color(1.0, 0.9, 0.5))
+func _set_sprite(sprite_map: Dictionary, layer: Node2D, cell: Vector2i, texture: Texture2D) -> void:
+    var sprite: Sprite2D
+    if sprite_map.has(cell):
+        sprite = sprite_map[cell] as Sprite2D
+    else:
+        sprite = Sprite2D.new()
+        sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+        layer.add_child(sprite)
+        sprite_map[cell] = sprite
+
+    sprite.position = _cell_center(cell)
+    sprite.texture = texture
+
+func _erase_sprite(sprite_map: Dictionary, cell: Vector2i) -> void:
+    if not sprite_map.has(cell):
+        return
+    var sprite := sprite_map[cell] as Sprite2D
+    if sprite != null:
+        sprite.queue_free()
+    sprite_map.erase(cell)
+
+func _clear_sprite_map(sprite_map: Dictionary) -> void:
+    for key in sprite_map.keys():
+        var sprite := sprite_map[key] as Sprite2D
+        if sprite != null:
+            sprite.queue_free()
+    sprite_map.clear()
+
+func _clear_layer_children(layer: Node2D) -> void:
+    for child in layer.get_children():
+        child.queue_free()
+
+func _cell_center(cell: Vector2i) -> Vector2:
+    return Vector2((float(cell.x) + 0.5) * _tile_size, (float(cell.y) + 0.5) * _tile_size)
+
+func _color(key: String, fallback: Color) -> Color:
+    var value: Variant = _palette.get(key, "")
+    if typeof(value) != TYPE_STRING:
+        return fallback
+    return Color.from_string(String(value), fallback)

@@ -1,0 +1,14 @@
+{
+  "width": 16,
+  "height": 24,
+  "palette": {
+    "outline": "#1f2a2d",
+    "skin": "#f4c9a0",
+    "hair": "#6a4936",
+    "shirt": "#4d78ba",
+    "shirt_shadow": "#345894",
+    "pants": "#3f4f7a",
+    "boots": "#4f3d32",
+    "accent": "#f4e48a"
+  }
+}
