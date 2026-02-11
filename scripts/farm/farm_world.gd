@@ -19,6 +19,7 @@ var _crop_catalog := CropCatalog.new()
 var _crop_data: Dictionary = {}
 var _day_steps: Array[String] = []
 var _latest_status: String = ""
+var _camera_ref: Camera2D
 
 func _ready() -> void:
     _crop_data = _crop_catalog.load_all()
@@ -68,12 +69,40 @@ func _initialize_view() -> void:
 
     var camera := player.get_node_or_null("Camera2D") as Camera2D
     if camera != null:
-        camera.limit_left = 0
-        camera.limit_top = 0
-        camera.limit_right = GRID_WIDTH * TILE_SIZE
-        camera.limit_bottom = GRID_HEIGHT * TILE_SIZE
+        _camera_ref = camera
         camera.position_smoothing_enabled = true
         camera.position_smoothing_speed = 6.0
+        _configure_camera_limits(camera)
+
+        var viewport := get_viewport()
+        if viewport != null and not viewport.size_changed.is_connected(_on_viewport_size_changed):
+            viewport.size_changed.connect(_on_viewport_size_changed)
+
+func _on_viewport_size_changed() -> void:
+    if _camera_ref != null:
+        _configure_camera_limits(_camera_ref)
+
+func _configure_camera_limits(camera: Camera2D) -> void:
+    var map_width := GRID_WIDTH * TILE_SIZE
+    var map_height := GRID_HEIGHT * TILE_SIZE
+    var viewport_size := get_viewport_rect().size
+
+    var half_width := int(ceil((viewport_size.x * 0.5) * camera.zoom.x))
+    var half_height := int(ceil((viewport_size.y * 0.5) * camera.zoom.y))
+
+    if map_width <= half_width * 2:
+        camera.limit_left = 0
+        camera.limit_right = map_width
+    else:
+        camera.limit_left = half_width
+        camera.limit_right = map_width - half_width
+
+    if map_height <= half_height * 2:
+        camera.limit_top = 0
+        camera.limit_bottom = map_height
+    else:
+        camera.limit_top = half_height
+        camera.limit_bottom = map_height - half_height
 
 func _bootstrap_inventory() -> void:
     if SessionState.inventory.get_total("parsnip_seed") <= 0:
