@@ -1,6 +1,7 @@
 {
   "tile_size": 32,
   "textures": {
+    "backdrop": "res://assets/tiles/farm_backdrop.png",
     "ground": "res://assets/tiles/ground_grass.png",
     "soil_dry": "res://assets/tiles/soil_dry.png",
     "soil_wet": "res://assets/tiles/soil_wet.png",

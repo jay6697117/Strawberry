@@ -10,10 +10,17 @@ script = ExtResource("1")
 [node name="FarmTilemapView" type="Node2D" parent="."]
 script = ExtResource("2")
 
-[node name="GroundLayer" type="Node2D" parent="FarmTilemapView"]
+[node name="Backdrop" type="Sprite2D" parent="FarmTilemapView"]
+centered = false
+texture_filter = 0
 
-[node name="SoilLayer" type="Node2D" parent="FarmTilemapView"]
+[node name="GroundLayer" type="TileMap" parent="FarmTilemapView"]
+texture_filter = 0
 
-[node name="CropLayer" type="Node2D" parent="FarmTilemapView"]
+[node name="SoilLayer" type="TileMap" parent="FarmTilemapView"]
+texture_filter = 0
+
+[node name="CropLayer" type="TileMap" parent="FarmTilemapView"]
+texture_filter = 0
 
 [node name="Player" parent="." instance=ExtResource("3")]

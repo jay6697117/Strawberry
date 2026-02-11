@@ -6,9 +6,9 @@
 script = ExtResource("1")
 
 [node name="HUDPanel" type="ColorRect" parent="."]
-offset_right = 560.0
-offset_bottom = 120.0
-color = Color(0, 0, 0, 0.32)
+offset_right = 500.0
+offset_bottom = 102.0
+color = Color(0, 0, 0, 0.22)
 
 [node name="GoldLabel" type="Label" parent="."]
 offset_left = 10.0
@@ -34,21 +34,21 @@ text = "spring"
 [node name="InventoryLabel" type="Label" parent="."]
 offset_left = 180.0
 offset_top = 6.0
-offset_right = 552.0
+offset_right = 490.0
 offset_bottom = 28.0
 text = "Seeds: 0 | Crop: 0 | Bin: 0"
 
 [node name="StatusLabel" type="Label" parent="."]
 offset_left = 180.0
 offset_top = 30.0
-offset_right = 552.0
+offset_right = 490.0
 offset_bottom = 52.0
 text = "Ready"
 
 [node name="HintLabel" type="Label" parent="."]
 offset_left = 180.0
 offset_top = 54.0
-offset_right = 552.0
-offset_bottom = 104.0
+offset_right = 490.0
+offset_bottom = 98.0
 autowrap_mode = 3
 text = "WASD/Arrow Move | F Till | G Water | H Plant | J Harvest | K End Day | L Ship"

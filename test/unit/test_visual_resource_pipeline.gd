@@ -23,6 +23,7 @@ func test_tileset_theme_declares_external_texture_paths() -> void:
         return
 
     var tex_dict := textures as Dictionary
+    assert_true(FileAccess.file_exists(String(tex_dict.get("backdrop", ""))))
     assert_true(FileAccess.file_exists(String(tex_dict.get("ground", ""))))
     assert_true(FileAccess.file_exists(String(tex_dict.get("soil_dry", ""))))
     assert_true(FileAccess.file_exists(String(tex_dict.get("soil_wet", ""))))

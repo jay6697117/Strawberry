@@ -4,8 +4,8 @@ signal status_changed(text: String)
 signal inventory_changed(seed_count: int, crop_count: int, pending_count: int)
 
 const TILE_SIZE := 32
-const GRID_WIDTH := 34
-const GRID_HEIGHT := 20
+const GRID_WIDTH := 64
+const GRID_HEIGHT := 36
 const MAX_CROP_STAGE := 4
 
 @onready var farm_tilemap_view: Node2D = $FarmTilemapView
@@ -30,7 +30,7 @@ func _ready() -> void:
     _day_tx.step_executed.connect(_on_day_step)
 
     _emit_inventory_metrics()
-    _emit_status("Move: WASD/Arrows | F Till | G Water | H Plant | J Harvest | K Sleep | L Ship")
+    _emit_status("Ready")
 
 func request_hud_sync() -> void:
     _emit_inventory_metrics()
@@ -65,6 +65,15 @@ func _initialize_player() -> void:
 func _initialize_view() -> void:
     if farm_tilemap_view.has_method("configure"):
         farm_tilemap_view.configure(TILE_SIZE, GRID_WIDTH, GRID_HEIGHT)
+
+    var camera := player.get_node_or_null("Camera2D") as Camera2D
+    if camera != null:
+        camera.limit_left = 0
+        camera.limit_top = 0
+        camera.limit_right = GRID_WIDTH * TILE_SIZE
+        camera.limit_bottom = GRID_HEIGHT * TILE_SIZE
+        camera.position_smoothing_enabled = true
+        camera.position_smoothing_speed = 6.0
 
 func _bootstrap_inventory() -> void:
     if SessionState.inventory.get_total("parsnip_seed") <= 0:
@@ -173,9 +182,9 @@ func _on_end_day_request() -> void:
         SaveSystem.save_game()
 
     if earned > 0:
-        _emit_status("Day %d finished (%s), shipping +%dG" % [SessionState.day, ", ".join(_day_steps), earned])
+        _emit_status("Day %d ended, shipping +%dG" % [SessionState.day, earned])
     else:
-        _emit_status("Day %d finished (%s)" % [SessionState.day, ", ".join(_day_steps)])
+        _emit_status("Day %d ended" % SessionState.day)
     _emit_inventory_metrics()
 
 func _on_ship_request() -> void:

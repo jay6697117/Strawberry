@@ -49,6 +49,21 @@ func test_farm_view_uses_layered_resource_nodes() -> void:
     assert_not_null(farm_view.get_node_or_null("SoilLayer"))
     assert_not_null(farm_view.get_node_or_null("CropLayer"))
 
+func test_farm_view_layers_are_tilemaps() -> void:
+    var packed := load("res://scenes/main/main.tscn") as PackedScene
+    var main: Node = add_child_autofree(packed.instantiate())
+    var farm_view := main.get_node_or_null("WorldRoot/FarmWorld/FarmTilemapView")
+    assert_not_null(farm_view)
+    if farm_view == null:
+        return
+
+    var ground := farm_view.get_node_or_null("GroundLayer")
+    var soil := farm_view.get_node_or_null("SoilLayer")
+    var crop := farm_view.get_node_or_null("CropLayer")
+    assert_true(ground is TileMap)
+    assert_true(soil is TileMap)
+    assert_true(crop is TileMap)
+
 func test_player_uses_visual_sprite_node() -> void:
     var packed := load("res://scenes/main/main.tscn") as PackedScene
     var main: Node = add_child_autofree(packed.instantiate())
